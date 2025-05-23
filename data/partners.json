@@ -1,9 +1,18 @@
 {
   "Shell": "Авто",
+  "LUKOIL": "Авто",
   "Booking.com": "Туризм",
+  "Airbnb": "Туризм",
   "IKEA": "Мебель",
+  "Leroy Merlin": "Дом",
   "DNS": "Электроника",
+  "M.Video": "Электроника",
   "Metro": "Продукты",
+  "Magnit": "Продукты",
   "OZON": "Онлайн",
-  "AliExpress": "Онлайн"
+  "Wildberries": "Онлайн",
+  "AliExpress": "Онлайн",
+  "Detskiy Mir": "Дети",
+  "RZD": "Транспорт",
+  "Yandex.Taxi": "Транспорт"
 }
