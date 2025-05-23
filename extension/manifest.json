@@ -5,8 +5,8 @@
   "description": "Автоматическая генерация 5 скриптов для клиента",
   "permissions": ["storage","activeTab","scripting"],
   "host_permissions": [
-    "https://github.com/Wooinpoorin/sovcombank-scripts/tree/main/data*"
-  ],
+  "https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/*"
+],
   "action": {"default_popup": "popup.html"},
   "background": {"service_worker": "background.js"}
 }
