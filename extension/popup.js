@@ -60,11 +60,13 @@
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
+      // Извлекаем данные клиента
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
         func: extractClient
       });
 
+      // Загружаем все необходимые JSON
       const [phrases, rules, products] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
@@ -80,11 +82,12 @@
         return;
       }
 
+      // Генерируем 5 вариантов
       for (let i = 1; i <= 5; i++) {
         const script = generateScript(phrases, products, client, rule);
         container.insertAdjacentHTML(
           'beforeend',
-          `<div class="script"><strong>Вариант ${i}:</strong><p>${script}</p></div>`
+          `<div class="script-card"><strong>Вариант ${i}:</strong><p>${script}</p></div>`
         );
       }
     } catch (e) {
