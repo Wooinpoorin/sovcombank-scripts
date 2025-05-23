@@ -8,6 +8,7 @@ import fitz  # PyMuPDF
 PDF_URL = os.getenv('SOURCE_URL') or sys.argv[1]
 OUTPUT_PATH = os.getenv('OUTPUT_PATH') or sys.argv[2]
 HALVA_URL = 'https://halvacard.ru/'
+PDF_URL = PDF_URL or 'https://sovcombank.ru/document/11218'
 
 # Парсинг PDF с условиями кредитов
 def parse_pdf(url):

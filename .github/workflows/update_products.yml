@@ -18,7 +18,8 @@ jobs:
         run: pip install requests PyMuPDF beautifulsoup4
       - name: Запустить обновление
         env:
-          SOURCE_URL: https://bank.ru/conditions/latest.pdf
+          SOURCE_URL: https://sovcombank.ru/document/11218
+
         run: python data/auto_update_products.py "$SOURCE_URL" data/products.json
       - name: Commit & Push
         run: |
