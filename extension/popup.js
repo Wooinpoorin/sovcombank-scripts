@@ -1,5 +1,5 @@
 (async () => {
-  const base = 'https://raw.githubusercontent.com/<USERNAME>/sovcombank-scripts/main/data/';
+  const base = 'https://github.com/Wooinpoorin/sovcombank-scripts/tree/main/data';
   async function load(file) {
     const res = await fetch(base + file);
     if (!res.ok) throw new Error(file + ' загрузка: ' + res.status);
