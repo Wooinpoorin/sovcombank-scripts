@@ -4,6 +4,7 @@ import sys
 import json
 import re
 from datetime import datetime
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -23,30 +24,28 @@ session.headers.update({
 })
 
 # ——————————————————————————————————————————————
-# 1) PDF source: from env or CLI, default to prod-api endpoint
+# 1) PDF source (prod-api or env/CLI override)
 PDF_URL = os.getenv("SOURCE_URL") or (
     sys.argv[1] if len(sys.argv) > 1 else
     "https://prod-api.sovcombank.ru/document/index?id=6335"
 )
+
 # 2) Output path
 OUTPUT_PATH = os.getenv("OUTPUT_PATH") or (
     sys.argv[2] if len(sys.argv) > 2 else
     "data/products.json"
 )
-# 3) HalvaCard URL
-HALVA_URL = "https://halvacard.ru/"
 
 print(f"Parsing PDF from: {PDF_URL}")
 print(f"Will write output to: {OUTPUT_PATH}")
 
 # ——————————————————————————————————————————————
 def parse_pdf(url: str) -> dict:
-    """Download PDF and extract loan products via regex."""
+    """Download PDF and extract known products via regex."""
     resp = session.get(url)
     resp.raise_for_status()
-
     doc = fitz.open(stream=resp.content, filetype="pdf")
-    text = "\n".join(page.get_text() for page in doc)
+    text = "\n".join(p.get_text() for p in doc)
 
     patterns = {
         "premium_loan":   r"Премиальный кредит[^\d%]*(\d+,\d*)%[^\d]*(\d{1,3})\s*мес",
@@ -57,25 +56,32 @@ def parse_pdf(url: str) -> dict:
         "travel_loan":    r"Кредит на путешествия[^\d%]*(\d+,\d*)%[^\d]*(\d{1,3})\s*мес"
     }
 
-    result = {}
+    out = {}
     for key, rx in patterns.items():
         m = re.search(rx, text, flags=re.IGNORECASE)
-        if not m:
+        if not m: 
             continue
         rate = float(m.group(1).replace(",", "."))
         term = int(m.group(2))
-        result[key] = {
+        out[key] = {
             "Ставка": rate,
             "Срок": term,
             "Обновлено": datetime.utcnow().isoformat()
         }
-    return result
+    return out
 
 # ——————————————————————————————————————————————
 def parse_halva(url: str) -> dict:
-    """Fetch HalvaCard page and extract installment and discount."""
-    resp = session.get(url)
-    resp.raise_for_status()
+    """
+    Attempt to fetch HalvaCard page. On 401/403, return empty dict
+    so the Action doesn't fail.
+    """
+    try:
+        resp = session.get(url)
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        print(f"Warning: HalvaCard fetch failed ({e}), skipping Halva data.")
+        return {}
 
     soup = BeautifulSoup(resp.text, "html.parser")
     inst_el = soup.select_one(".installment-months")
@@ -94,10 +100,10 @@ def parse_halva(url: str) -> dict:
     }
 
 # ——————————————————————————————————————————————
-# Build and save JSON
+# Build products dict and write JSON
 products = {}
 products.update(parse_pdf(PDF_URL))
-products.update(parse_halva(HALVA_URL))
+products.update(parse_halva("https://halvacard.ru/"))
 
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
