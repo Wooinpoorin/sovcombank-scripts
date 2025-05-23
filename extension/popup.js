@@ -8,8 +8,12 @@
   }
 
   function extractClient() {
+    const fullName = document.querySelector('.full-name')?.innerText.trim() || '';
+    const parts = fullName.split(/\s+/);
     return {
-      name: document.querySelector('.full-name')?.innerText.trim() || 'Клиент',
+      fullName,
+      firstName: parts[1] || '',
+      patronymic: parts[2] || '',
       category: document.querySelector('.client-category')?.innerText.trim() || '',
       credit_remaining_months: Number(document.querySelector('.credit-remaining')?.innerText.trim()) || 0,
       operations: Array.from(document.querySelectorAll('.client-operations li')).map(li => ({
@@ -24,14 +28,11 @@
       .sort((a, b) => a.priority - b.priority)
       .find(rule => {
         const t = rule.trigger;
-        // MCC-based trigger
         if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
           const count = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
           if (count >= (t.min_count || 0)) return true;
         }
-        // Client category trigger
         if (t.client_category && client.category === t.client_category) return true;
-        // Soon-expiring credit trigger
         if (t.credit_remaining_months != null &&
             client.credit_remaining_months <= t.credit_remaining_months) return true;
         return false;
@@ -50,7 +51,9 @@
     const term = prod.Срок != null ? `${prod.Срок} мес.` : '';
 
     text = text
-      .replace(/{{ФИО}}/g, client.name)
+      .replace(/{{ФИО}}/g, client.fullName)
+      .replace(/{{Имя}}/g, client.firstName)
+      .replace(/{{Отчество}}/g, client.patronymic)
       .replace(/{{credit_remaining_months}}/g, client.credit_remaining_months)
       .replace(/{{ставка}}/g, rate)
       .replace(/{{срок}}/g, term);
