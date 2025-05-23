@@ -2,8 +2,8 @@ name: Обновление products.json
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # ежедневно в 06:00 UTC
-  workflow_dispatch: {}   # позволяет запускать вручную
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
 
 jobs:
   update:
@@ -15,12 +15,12 @@ jobs:
         with:
           python-version: '3.10'
       - name: Установить библиотеки
-        run: pip install requests PyMuPDF beautifulsoup4
+        run: pip install requests PyMuPDF
       - name: Запустить обновление
         env:
           SOURCE_URL: https://prod-api.sovcombank.ru/document/index?id=6335
-
-        run: python data/auto_update_products.py "$SOURCE_URL" data/products.json
+        run: |
+          python data/auto_update_products.py "$SOURCE_URL" data/products.json
       - name: Commit & Push
         run: |
           git config user.name "github-actions[bot]"
