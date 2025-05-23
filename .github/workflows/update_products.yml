@@ -1,0 +1,32 @@
+name: Обновление products.json
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # ежедневно в 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Установить Python и зависимости
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Установить библиотеки
+        run: pip install requests PyMuPDF beautifulsoup4
+      - name: Запустить обновление
+        env:
+          SOURCE_URL: https://bank.ru/conditions/latest.pdf
+        run: python data/auto_update_products.py "$SOURCE_URL" data/products.json
+      - name: Commit & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/products.json
+          git diff --quiet || git commit -m "chore: auto-update products.json [skip ci]"
+      - name: Push
+        uses: ad-m/github-push-action@v0.6.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
