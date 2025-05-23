@@ -1,9 +1,10 @@
 name: Обновление products.json
 
+# убедитесь, что блок on: начинается в самом начале строки, без пробелов:
 on:
   schedule:
-    - cron: '0 6 * * *'  # ежедневно в 06:00 UTC
-  workflow_dispatch: {}
+    - cron: '0 6 * * *'    # ежедневно в 06:00 UTC
+  workflow_dispatch: {}    # позволяет запускать вручную
 
 jobs:
   update:
