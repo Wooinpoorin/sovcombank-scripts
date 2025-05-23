@@ -1,54 +1,87 @@
 {
-  "vip_premium": {
-    "priority": 10,
+  "vip_client": {
+    "priority": 5,
     "trigger": {
       "client_category": "VIP"
     },
-    "phrase_blocks": ["greeting","empathy","offer_intro","details","benefit","closing"],
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
     "target_product": "premium_loan"
   },
-  "soon_expiring": {
-    "priority": 20,
+  "fuel_auto": {
+    "priority": 10,
     "trigger": {
-      "credit_remaining_months": 3
-    },
-    "phrase_blocks": ["greeting","reminder","offer_intro","details","cta"],
-    "target_product": "refinance_loan"
-  },
-  "auto_enthusiast": {
-    "priority": 30,
-    "trigger": {
-      "purchase_categories": ["Авто"],
+      "mcc_codes": [5541, 5542],
       "min_count": 1
     },
-    "phrase_blocks": ["greeting","offer_intro","details","benefit","cta"],
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
     "target_product": "car_loan"
   },
-  "travel_buff": {
-    "priority": 40,
+  "home_improvement": {
+    "priority": 20,
     "trigger": {
-      "purchase_categories": ["Туризм"],
+      "mcc_codes": [5200, 5211, 5712],
       "min_count": 1
     },
-    "phrase_blocks": ["greeting","offer_intro","details","benefit","cta"],
-    "target_product": "travel_loan"
+    "phrase_blocks": ["intro","hook","usp","closing"],
+    "target_product": "consumer_loan"
   },
-  "grocery_lover": {
-    "priority": 50,
+  "grocery_shopper": {
+    "priority": 30,
     "trigger": {
-      "purchase_categories": ["Продукты"],
+      "mcc_codes": [5411, 5422],
       "min_count": 1
     },
-    "phrase_blocks": ["greeting","offer_intro","details","benefit","cta"],
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
     "target_product": "grocery_loan"
   },
-  "consumer_general": {
-    "priority": 100,
+  "health_care": {
+    "priority": 40,
     "trigger": {
-      "purchase_categories": [],
-      "min_count": 0
+      "mcc_codes": [5912, 5977],
+      "min_count": 1
     },
-    "phrase_blocks": ["greeting","offer_intro","details","closing"],
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "travel_buff": {
+    "priority": 50,
+    "trigger": {
+      "mcc_codes": [4511, 4121],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","hook","offer_intro","closing"],
+    "target_product": "travel_loan"
+  },
+  "digital_life": {
+    "priority": 60,
+    "trigger": {
+      "mcc_codes": [5732, 5733],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "education_support": {
+    "priority": 70,
+    "trigger": {
+      "mcc_codes": [8299],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "soon_expiring": {
+    "priority": 80,
+    "trigger": {
+      "credit_remaining_months": 6
+    },
+    "phrase_blocks": ["intro","usp","closing"],
+    "target_product": "refinance_loan"
+  },
+  "default": {
+    "priority": 100,
+    "trigger": {},
+    "phrase_blocks": ["intro","offer_intro","closing"],
     "target_product": "consumer_loan"
   }
 }
