@@ -1,5 +1,9 @@
 name: Обновление products.json
 
+# Даём действие право писать в репозиторий
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: '0 6 * * *'
@@ -10,26 +14,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          # без этого checkout по умолчанию делает read-only clone
+          persist-credentials: true
+
       - name: Установить Python и зависимости
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+
       - name: Установить библиотеки
-        run: pip install requests PyMuPDF
+        run: pip install requests PyMuPDF beautifulsoup4
+
       - name: Запустить обновление
         env:
           SOURCE_URL: https://prod-api.sovcombank.ru/document/index?id=6335
-        run: |
-          python data/auto_update_products.py "$SOURCE_URL" data/products.json
+        run: python data/auto_update_products.py "$SOURCE_URL" data/products.json
+
       - name: Commit & Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/products.json
           git diff --quiet || git commit -m "chore: auto-update products.json [skip ci]"
-      - name: Push
+
+      - name: Push changes
         uses: ad-m/github-push-action@v0.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: main
-
