@@ -9,31 +9,32 @@ import requests
 import fitz  # PyMuPDF
 
 # ——————————————————————————————————————————————
-# Настраиваем сессию с заголовком браузера
+# Настройка HTTP-сессии с User-Agent
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 })
 
-# 1) URL PDF из окружения или аргументов (по умолчанию prod-api)
+# ——————————————————————————————————————————————
+# 1) URL PDF (из env/SOURCE_URL или аргумента, иначе дефолт)
 PDF_URL = os.getenv("SOURCE_URL") or (
     sys.argv[1] if len(sys.argv) > 1 else
     "https://prod-api.sovcombank.ru/document/index?id=6335"
 )
 
-# 2) Путь для сохранения JSON
+# 2) Куда сохранять JSON
 OUTPUT_PATH = os.getenv("OUTPUT_PATH") or (
     sys.argv[2] if len(sys.argv) > 2 else
     "data/products.json"
 )
 
 print(f"Parsing PDF from: {PDF_URL}")
-print(f"Saving output to: {OUTPUT_PATH}")
+print(f"Will write output to: {OUTPUT_PATH}")
 
+# ——————————————————————————————————————————————
 def parse_pdf(url: str) -> dict:
     """
-    Скачиваем PDF, извлекаем текст и по регуляркам
-    собираем условия кредитов.
+    Скачиваем PDF и по регуляркам вытягиваем условия кредитов.
     """
     resp = session.get(url)
     resp.raise_for_status()
@@ -52,11 +53,11 @@ def parse_pdf(url: str) -> dict:
 
     out = {}
     for key, rx in patterns.items():
-        m = re.search(rx, text, flags=re.IGNORECASE)
-        if not m:
+        match = re.search(rx, text, flags=re.IGNORECASE)
+        if not match:
             continue
-        rate = float(m.group(1).replace(",", "."))
-        term = int(m.group(2))
+        rate = float(match.group(1).replace(",", "."))
+        term = int(match.group(2))
         out[key] = {
             "Ставка": rate,
             "Срок": term,
@@ -64,9 +65,11 @@ def parse_pdf(url: str) -> dict:
         }
     return out
 
-# Собираем и сохраняем
+# ——————————————————————————————————————————————
+# Основной код: только PDF
 products = parse_pdf(PDF_URL)
 
+# Сохраняем результат
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
     json.dump(products, f, ensure_ascii=False, indent=2)
