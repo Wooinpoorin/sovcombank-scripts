@@ -33,10 +33,10 @@
         const t = rule.trigger;
         // 1. VIP by category
         if (t.client_category && client.category === t.client_category) return true;
-        // 2. Soon‐expiring credit
+        // 2. Soon-expiring credit
         if (t.credit_remaining_months !== undefined &&
             client.credit_remaining_months <= t.credit_remaining_months) return true;
-        // 3. Purchase‐based triggers
+        // 3. Purchase-based triggers
         if (t.purchase_categories && t.purchase_categories.length) {
           const matchCount = purchaseCats.filter(cat => t.purchase_categories.includes(cat)).length;
           if (matchCount >= (t.min_count || 0)) return true;
@@ -46,7 +46,7 @@
   }
 
   function generateScript(phrases, rule, products, client) {
-    // соберём текст из блоков
+    // assemble phrase blocks
     let text = rule.phrase_blocks
       .map(block => {
         const arr = phrases[block] || [];
@@ -54,37 +54,33 @@
       })
       .join(' ');
 
-    // подготовим значения для подстановки
+    // get current rate and term
     const prod = products[rule.target_product] || {};
-    const rateNum = prod.Ставка ?? '';
-    // показываем только нижнюю планку: "от X"
-    const rateText = rateNum !== '' ? `от ${rateNum}` : '';
-    const termText = prod.Срок ?? '';
-    const discountText = prod.discount ?? prod.cashback ?? '';
-    const instText = prod.installment_months ?? '';
+    const rate = prod.Ставка != null ? `${prod.Ставка}%` : '';
+    const term = prod.Срок != null ? `${prod.Срок} мес.` : '';
 
-    // подставляем
+    // perform substitutions
     text = text
-      .replace('{{ФИО}}', client.name)
-      .replace('{{ставка}}', rateText)
-      .replace('{{срок}}', termText)
-      .replace('{{discount}}', discountText)
-      .replace('{{cashback}}', discountText)
-      .replace('{{installment_months}}', instText)
-      .replace('{{credit_remaining_months}}', client.credit_remaining_months);
+      .replace(/{{ФИО}}/g, client.name)
+      .replace(/{{ставка}}/g, rate)
+      .replace(/{{срок}}/g, term)
+      .replace(/{{discount}}/g, prod.discount ?? '')
+      .replace(/{{cashback}}/g, prod.cashback ?? '')
+      .replace(/{{installment_months}}/g, prod.installment_months ?? '')
+      .replace(/{{credit_remaining_months}}/g, client.credit_remaining_months);
 
     return text;
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
-      // данные клиента
+      // extract client info from page
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
         func: extractClient
       });
 
-      // загрузка всех JSON
+      // load data
       const [phrases, rules, partners, products] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
@@ -97,12 +93,12 @@
 
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
+
       if (!rule) {
         container.innerHTML = '<p>Нет рекомендаций</p>';
         return;
       }
 
-      // пять вариантов
       for (let i = 1; i <= 5; i++) {
         const script = generateScript(phrases, rule, products, client);
         container.insertAdjacentHTML('beforeend',
