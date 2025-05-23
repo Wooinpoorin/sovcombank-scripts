@@ -1,0 +1,54 @@
+{
+  "vip_premium": {
+    "priority": 10,
+    "trigger": {
+      "client_category": "VIP"
+    },
+    "phrase_blocks": ["greeting", "offer_intro", "details", "closing"],
+    "target_product": "premium_loan"
+  },
+  "auto_enthusiast": {
+    "priority": 20,
+    "trigger": {
+      "purchase_categories": ["Авто"],
+      "min_count": 2
+    },
+    "phrase_blocks": ["greeting", "offer_intro", "details", "closing"],
+    "target_product": "car_loan"
+  },
+  "travel_buff": {
+    "priority": 30,
+    "trigger": {
+      "purchase_categories": ["Туризм"],
+      "min_count": 2
+    },
+    "phrase_blocks": ["greeting", "offer_intro", "details", "closing"],
+    "target_product": "travel_loan"
+  },
+  "soon_expiring": {
+    "priority": 40,
+    "trigger": {
+      "active_credit_remaining_months": 3
+    },
+    "phrase_blocks": ["greeting", "offer_intro", "details", "closing"],
+    "target_product": "refinance_offer"
+  },
+  "electronics_halva": {
+    "priority": 50,
+    "trigger": {
+      "purchase_categories": ["Электроника"],
+      "min_count": 1
+    },
+    "phrase_blocks": ["greeting", "halva_intro", "halva_benefits", "closing"],
+    "target_product": "halva_card"
+  },
+  "home_halva": {
+    "priority": 60,
+    "trigger": {
+      "purchase_categories": ["Мебель", "Дом"],
+      "min_count": 1
+    },
+    "phrase_blocks": ["greeting", "halva_intro", "halva_benefits", "closing"],
+    "target_product": "halva_card"
+  }
+}
