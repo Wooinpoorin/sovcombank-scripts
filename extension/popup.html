@@ -4,64 +4,92 @@
   <meta charset="UTF-8">
   <title>Генератор Скриптов</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
+    /* Задаём размеры popup-окна */
+    html, body {
       margin: 0;
-      padding: 16px;
-      background: #f5f5f5;
-      color: #333;
+      padding: 0;
+      width: 480px;
+      height: 720px;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #ecf0f1;
+      color: #2c3e50;
+      box-sizing: border-box;
     }
-    h2 {
-      margin: 0 0 16px;
-      text-align: center;
-      font-size: 18px;
-    }
-    #generate {
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
-      margin-bottom: 16px;
-      background: #2c3e50;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    #generate:hover {
-      background: #34495e;
-    }
-    #scriptsContainer {
+    .popup-wrapper {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      max-height: 60vh;
+      height: 100%;
+    }
+    h2 {
+      margin: 16px 0 8px;
+      text-align: center;
+      font-size: 20px;
+      color: #34495e;
+    }
+    #generate {
+      align-self: center;
+      width: calc(100% - 32px);
+      margin-bottom: 16px;
+      padding: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      background: #2980b9;
+      color: #ecf0f1;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #generate:hover {
+      background: #3498db;
+    }
+    #scriptsContainer {
+      flex: 1;
       overflow-y: auto;
-      padding-right: 4px;
+      padding: 0 16px 16px;
     }
     .script-card {
       background: #fff;
-      border-radius: 6px;
-      padding: 12px;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
     .script-card strong {
       display: block;
       margin-bottom: 8px;
+      font-size: 16px;
       color: #2c3e50;
-      font-size: 14px;
     }
     .script-card p {
       margin: 0;
-      color: #555;
+      font-size: 14px;
       line-height: 1.5;
-      font-size: 13px;
+      color: #4a4a4a;
+    }
+    /* Добавим плавный скролл */
+    #scriptsContainer {
+      scrollbar-width: thin;
+      scrollbar-color: #bdc3c7 #ecf0f1;
+    }
+    #scriptsContainer::-webkit-scrollbar {
+      width: 6px;
+    }
+    #scriptsContainer::-webkit-scrollbar-track {
+      background: #ecf0f1;
+    }
+    #scriptsContainer::-webkit-scrollbar-thumb {
+      background-color: #bdc3c7;
+      border-radius: 3px;
     }
   </style>
 </head>
 <body>
-  <h2>Ваши персональные скрипты</h2>
-  <button id="generate">Сгенерировать 5 вариантов</button>
-  <div id="scriptsContainer"></div>
+  <div class="popup-wrapper">
+    <h2>Ваши персональные скрипты</h2>
+    <button id="generate">Сгенерировать 5 вариантов</button>
+    <div id="scriptsContainer"></div>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>
