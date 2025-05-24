@@ -3,63 +3,88 @@ import os
 import json
 import re
 from datetime import datetime
-
 import requests
 from bs4 import BeautifulSoup
 
-# User-Agent to emulate a real browser
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 }
 
-# URLs to scrape static conditions from
 URLS = {
     "online_cash_loan": "https://sovcombank.ru/apply/credit/onlajn-zayavka-na-kredit-nalichnymi/",
     "car_pledge_loan":  "https://sovcombank.ru/credits/cash/pod-zalog-avto",
-    "pod_zalog":        "https://sovcombank.ru/credits/pod-zalog"
+    "real_estate_pledge_loan": "https://sovcombank.ru/credits/pod-zalog"
 }
 
-# Where to write the results
 OUTPUT_PATH = os.getenv("OUTPUT_PATH", "data/products.json")
 
-def parse_conditions(url: str) -> dict:
-    """
-    Fetch the page at `url` and extract all percent-and-month pairs,
-    returning the minimum rate and maximum term.
-    """
+def parse_conditions(url, rate_pattern, term_pattern, description):
     resp = requests.get(url, headers=HEADERS)
     resp.raise_for_status()
-    text = BeautifulSoup(resp.text, "html.parser").get_text(separator="\n")
+    soup = BeautifulSoup(resp.text, "html.parser")
 
-    # find all percentages, e.g. "12,5%"
-    rates = [float(r.replace(",", ".")) for r in re.findall(r"(\d+[,\.]\d*)\s*%", text)]
-    # find all terms in months, e.g. "24 мес."
-    terms = [int(m) for m in re.findall(r"(\d{1,3})\s*мес", text)]
+    content_text = soup.get_text(separator=" ")
+
+    rates = re.findall(rate_pattern, content_text)
+    terms = re.findall(term_pattern, content_text)
 
     if not rates or not terms:
-        raise RuntimeError(f"Не удалось найти ставку или срок на странице {url}")
+        raise ValueError(f"Не найдены условия на странице: {url}")
 
     return {
-        "Ставка": min(rates),
-        "Срок":   max(terms),
-        "Обновлено": datetime.utcnow().isoformat()
+        "Ставка": float(rates[0].replace(',', '.')),
+        "Срок": int(terms[0]),
+        "Описание": description,
+        "Обновлено": datetime.utcnow().isoformat() + "Z"
     }
 
 def main():
     products = {}
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 
-    for key, url in URLS.items():
+    parsers = {
+        "online_cash_loan": {
+            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
+            "term_pattern": r'до\s+(\d+)\s+мес',
+            "description": "Кредит наличными онлайн"
+        },
+        "car_pledge_loan": {
+            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
+            "term_pattern": r'до\s+(\d+)\s+месяц',
+            "description": "Кредит под залог авто"
+        },
+        "real_estate_pledge_loan": {
+            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
+            "term_pattern": r'до\s+(\d+)\s+месяц',
+            "description": "Кредит под залог недвижимости"
+        }
+    }
+
+    for product, settings in parsers.items():
         try:
-            products[key] = parse_conditions(url)
-            print(f"Parsed {key}: {products[key]}")
+            products[product] = parse_conditions(
+                URLS[product],
+                settings["rate_pattern"],
+                settings["term_pattern"],
+                settings["description"]
+            )
+            print(f"Parsed {product}: {products[product]}")
         except Exception as e:
-            print(f"Warning: не удалось обработать {key} ({url}): {e}")
+            print(f"Ошибка при парсинге {product}: {e}")
+
+    # Загрузка существующих данных и обновление
+    if os.path.exists(OUTPUT_PATH):
+        with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
+            current_products = json.load(f)
+    else:
+        current_products = {}
+
+    current_products.update(products)
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
+        json.dump(current_products, f, ensure_ascii=False, indent=2)
 
-    print(f"Updated {len(products)} products in {OUTPUT_PATH}")
+    print(f"✅ Данные продуктов успешно обновлены и сохранены в {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     main()
