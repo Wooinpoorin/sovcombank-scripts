@@ -13,7 +13,7 @@
       "mcc_codes": [5541, 5542],
       "min_count": 1
     },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "phrase_blocks": ["intro","interest_auto","offer_intro","usp","closing"],
     "target_product": "car_loan"
   },
   "home_improvement": {
@@ -22,7 +22,7 @@
       "mcc_codes": [5200, 5211, 5712],
       "min_count": 1
     },
-    "phrase_blocks": ["intro","hook","usp","closing"],
+    "phrase_blocks": ["intro","interest_home","hook","usp","closing"],
     "target_product": "consumer_loan"
   },
   "grocery_shopper": {
@@ -31,11 +31,47 @@
       "mcc_codes": [5411, 5422],
       "min_count": 1
     },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "phrase_blocks": ["intro","interest_groceries","offer_intro","usp","closing"],
     "target_product": "grocery_loan"
   },
-  "health_care": {
+  "digital_life": {
     "priority": 40,
+    "trigger": {
+      "mcc_codes": [5732, 5733, 5735],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "child_products": {
+    "priority": 45,
+    "trigger": {
+      "mcc_codes": [5945],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "restaurants_fastfood": {
+    "priority": 50,
+    "trigger": {
+      "mcc_codes": [5812, 5814],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "online_shopping": {
+    "priority": 55,
+    "trigger": {
+      "mcc_codes": [5699, 5942],
+      "min_count": 1
+    },
+    "phrase_blocks": ["intro","hook","offer_intro","usp","closing"],
+    "target_product": "consumer_loan"
+  },
+  "health_care": {
+    "priority": 60,
     "trigger": {
       "mcc_codes": [5912, 5977],
       "min_count": 1
@@ -44,22 +80,13 @@
     "target_product": "consumer_loan"
   },
   "travel_buff": {
-    "priority": 50,
+    "priority": 65,
     "trigger": {
       "mcc_codes": [4511, 4121],
       "min_count": 1
     },
-    "phrase_blocks": ["intro","hook","offer_intro","closing"],
+    "phrase_blocks": ["intro","interest_travel","hook","offer_intro","closing"],
     "target_product": "travel_loan"
-  },
-  "digital_life": {
-    "priority": 60,
-    "trigger": {
-      "mcc_codes": [5732, 5733],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
   },
   "education_support": {
     "priority": 70,
