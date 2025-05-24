@@ -29,14 +29,14 @@
       .sort((a, b) => a.priority - b.priority)
       .find(rule => {
         const t = rule.trigger;
-        // MCC-триггер
+        // MCC trigger
         if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
           const count = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
           if (count >= (t.min_count || 0)) return true;
         }
-        // категория клиента
+        // Client category
         if (t.client_category && client.category === t.client_category) return true;
-        // скоро закрытие кредита
+        // Soon expiring
         if (t.credit_remaining_months != null &&
             client.credit_remaining_months <= t.credit_remaining_months) return true;
         return false;
@@ -45,16 +45,19 @@
 
   function generateScript(phrases, products, client, rule) {
     const blocks = rule.phrase_blocks || [];
+    // build text from blocks
     let text = blocks.map(block => {
       const arr = phrases[block] || [];
       return arr[Math.floor(Math.random() * arr.length)] || '';
     }).join(' ');
 
-    // подставляем ставку и срок без лишнего "от"
+    // pull product terms
     const prod = products[rule.target_product] || {};
+    // ensure percent sign is appended
     const rate = prod.Ставка != null ? `${prod.Ставка}%` : '';
     const term = prod.Срок   != null ? `${prod.Срок} мес.` : '';
 
+    // replace placeholders
     text = text
       .replace(/{{ФИО}}/g, client.fullName)
       .replace(/{{Имя}}/g, client.firstName)
@@ -68,6 +71,7 @@
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
+      // extract client info
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: {
           tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id
@@ -75,6 +79,7 @@
         func: extractClient
       });
 
+      // load data files
       const [phrases, rules, products] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
@@ -90,6 +95,7 @@
         return;
       }
 
+      // generate 5 variants
       for (let i = 1; i <= 5; i++) {
         const script = generateScript(phrases, products, client, rule);
         container.insertAdjacentHTML(
