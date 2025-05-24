@@ -1,113 +1,104 @@
 (async () => {
   const BASE = 'https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/';
 
-  async function loadJSON(file) {
-    const res = await fetch(BASE + file);
-    if (!res.ok) throw new Error(`${file} загрузка: ${res.status}`);
+  async function loadJSON(filename) {
+    const res = await fetch(BASE + filename);
+    if (!res.ok) throw new Error(`${filename} загрузка: ${res.status}`);
     return res.json();
   }
 
   function extractClient() {
-    const fullName = document.querySelector('.full-name')?.innerText.trim() || '';
+    const fullName = document.querySelector('#fio')?.innerText.trim()
+                   || document.querySelector('.full-name')?.innerText.trim()
+                   || '';
     const parts = fullName.split(/\s+/);
     return {
       fullName,
       firstName: parts[1] || '',
       patronymic: parts[2] || '',
-      operations: Array.from(document.querySelectorAll('.client-operations li')).map(li => ({
-        mcc: li.dataset.mcc ? Number(li.dataset.mcc) : null
-      }))
+      category: document.querySelector('.client-category')?.innerText.trim() || '',
+      credit_remaining_months:
+        Number(document.querySelector('.credit-remaining')?.innerText.trim()) || 0,
+      operations: Array.from(document.querySelectorAll('#ops-table tr')).map(tr => {
+        const mccCell = tr.cells[4];
+        return {
+          mcc: mccCell ? Number(mccCell.innerText.trim()) : null
+        };
+      })
     };
+  }
+
+  function matchesRule(rule, client) {
+    const t = rule.trigger;
+    // MCC
+    if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
+      const n = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
+      if (n >= (t.min_count || 1)) return true;
+    }
+    // category
+    if (t.client_category && client.category === t.client_category) return true;
+    // expiring
+    if (t.credit_remaining_months != null
+        && client.credit_remaining_months <= t.credit_remaining_months) return true;
+    return false;
+  }
+
+  function generateScript(phrases, products, client, rule) {
+    const text = rule.phrase_blocks.map(block => {
+      const arr = phrases[block] || [];
+      return arr[Math.floor(Math.random()*arr.length)] || '';
+    }).join(' ');
+
+    const prod = products[rule.target_product] || {};
+    const rate = prod.Ставка != null ? `${prod.Ставка}%` : '';
+    const term = prod.Срок   != null ? `${prod.Срок} мес.` : '';
+
+    return text
+      .replace(/{{ФИО}}/g, client.fullName)
+      .replace(/{{Имя}}/g, client.firstName)
+      .replace(/{{Отчество}}/g, client.patronymic)
+      .replace(/{{credit_remaining_months}}/g, client.credit_remaining_months)
+      .replace(/{{ставка}}/g, rate)
+      .replace(/{{срок}}/g, term);
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
       const [{ result: client }] = await chrome.scripting.executeScript({
-        target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
+        target: { tabId: (await chrome.tabs.query({ active:true, currentWindow:true }))[0].id },
         func: extractClient
       });
 
-      const [phrases, products] = await Promise.all([
+      const [phrases, rules, products] = await Promise.all([
         loadJSON('phrases.json'),
+        loadJSON('rules.json'),
         loadJSON('products.json')
       ]);
-
-      // Product data
-      const genProd = products["Кредит на карту Прайм Плюс"] || {};
-      const autoProd = products["Кредит под залог автомобиля"] || {};
-      const realProd = products["Кредит под залог недвижимости"] || {};
-
-      const rateGen  = genProd.Ставка  || '';
-      const termGen  = genProd.Срок    || '';
-      const rateAuto = autoProd.Ставка || '';
-      const termAuto = autoProd.Срок   || '';
-      const rateReal = realProd.Ставка || '';
-      const termReal = realProd.Срок   || '';
-
-      // Detect fuel purchases
-      const haveFuel = client.operations.some(op => [5541, 5542].includes(op.mcc));
 
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
-      // 1. Generic cash offer
-      {
-        const tpl = phrases.generic_offer;
-        const txt = tpl[Math.floor(Math.random() * tpl.length)]
-          .replace(/{{ФИО}}/g, client.fullName)
-          .replace(/{{Имя}}/g, client.firstName)
-          .replace(/{{Отчество}}/g, client.patronymic)
-          .replace(/{{ставка}}/g, rateGen)
-          .replace(/{{срок}}/g, termGen);
-        container.insertAdjacentHTML('beforeend',
-          `<div class="script-card"><p>${txt}</p></div>`
-        );
+      const matched = Object.values(rules)
+        .sort((a,b)=>a.priority-b.priority)
+        .filter(rule => matchesRule(rule, client));
+
+      if (matched.length === 0 && rules.default) {
+        matched.push(rules.default);
       }
 
-      // 2–3. Auto-pledge (or fallback to generic)
-      for (let i = 0; i < 2; i++) {
-        const key = haveFuel ? 'auto_pledge' : 'generic_offer';
-        const tpl = phrases[key];
-        const txt = tpl[Math.floor(Math.random() * tpl.length)]
-          .replace(/{{ФИО}}/g, client.fullName)
-          .replace(/{{Имя}}/g, client.firstName)
-          .replace(/{{Отчество}}/g, client.patronymic)
-          .replace(/{{ставка}}/g, haveFuel ? rateAuto : rateGen)
-          .replace(/{{срок}}/g, haveFuel ? termAuto : termGen);
+      matched.forEach((rule, idx) => {
+        const script = generateScript(phrases, products, client, rule);
+        const title = rule.target_product;
         container.insertAdjacentHTML('beforeend',
-          `<div class="script-card"><p>${txt}</p></div>`
+          `<div class="script-card">
+             <strong>Скрипт #${idx+1}: ${title}</strong>
+             <p>${script}</p>
+           </div>`
         );
-      }
-
-      // 4. Objection handling
-      {
-        const tpl = phrases.objection;
-        const txt = tpl[Math.floor(Math.random() * tpl.length)]
-          .replace(/{{ФИО}}/g, client.fullName)
-          .replace(/{{Имя}}/g, client.firstName)
-          .replace(/{{Отчество}}/g, client.patronymic);
-        container.insertAdjacentHTML('beforeend',
-          `<div class="script-card"><p>${txt}</p></div>`
-        );
-      }
-
-      // 5. Real estate pledge
-      {
-        const tpl = phrases.real_estate;
-        const txt = tpl[Math.floor(Math.random() * tpl.length)]
-          .replace(/{{ФИО}}/g, client.fullName)
-          .replace(/{{Имя}}/g, client.firstName)
-          .replace(/{{Отчество}}/g, client.patronymic)
-          .replace(/{{ставка}}/g, rateReal)
-          .replace(/{{срок}}/g, termReal);
-        container.insertAdjacentHTML('beforeend',
-          `<div class="script-card"><p>${txt}</p></div>`
-        );
-      }
-
-    } catch (err) {
-      console.error(err);
-      alert('Ошибка генерации: ' + err.message);
+      });
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка генерации скриптов: ' + e.message);
     }
   });
 })();
