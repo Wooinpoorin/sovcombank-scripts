@@ -24,63 +24,66 @@ HEADERS = {
     "Upgrade-Insecure-Requests": "1"
 }
 
-# Объект cloudscraper
+# cloudscraper-сессия для обхода 401
 scraper = cloudscraper.create_scraper()
 
-# Ссылки на лендинги трёх продуктов
+# Лендинги трёх продуктов
 URLS = {
     "online_cash_loan":        "https://sovcombank.ru/apply/credit/onlajn-zayavka-na-kredit-nalichnymi/",
     "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto",
     "real_estate_pledge_loan": "https://sovcombank.ru/credits/pod-zalog"
 }
 
+# куда сохранять
 OUTPUT_PATH = os.getenv("OUTPUT_PATH", "data/products.json")
 
+
 def fetch_url(url: str) -> requests.Response:
-    """
-    Пытаемся облазить через cloudscraper, 
-    иначе — через requests.
-    """
+    """Пытаемся достать страницу через cloudscraper, иначе — через requests."""
     try:
-        resp = scraper.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
-        resp.raise_for_status()
-        return resp
+        r = scraper.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
+        r.raise_for_status()
+        return r
     except Exception:
-        # fallback
-        resp = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
-        resp.raise_for_status()
-        return resp
+        r = requests.get(url, headers=HEADERS, timeout=30, allow_redirects=True)
+        r.raise_for_status()
+        return r
+
 
 def parse_conditions(url: str) -> dict:
     """
-    Универсальный парсер:
-      1) сначала ищем «от X%» и «до Y мес»
-      2) если не нашли — любая цифра с % и любая цифра + 'мес'
+    Парсим страницу:
+    1) Сначала ищем <script type="application/ld+json"> с BankLoan
+    2) Если не найдено — ищем по regex «от X%» и «до Y мес»
     """
     resp = fetch_url(url)
-    text = BeautifulSoup(resp.text, "html.parser").get_text(separator=" ")
+    soup = BeautifulSoup(resp.text, "html.parser")
 
-    # 1-й проход: строго «от ...%» и «до ...мес»
-    rates = re.findall(r"от\s*([0-9]+[.,]?[0-9]*)\s*%", text, flags=re.IGNORECASE)
-    terms = re.findall(r"до\s*([0-9]{1,3})\s*мес", text, flags=re.IGNORECASE)
+    # 1) LD-JSON
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(tag.string)
+            if data.get("@type") == "BankLoan":
+                rate = float(data["interestRate"].rstrip("%").replace(",", "."))
+                term = int(re.match(r"(\d+)", data["loanTerm"]).group(1))
+                return {"Ставка": rate, "Срок": term,
+                        "Обновлено": datetime.utcnow().isoformat() + "Z"}
+        except Exception:
+            continue
 
-    # 2-й проход: любой процент и любой срок
-    if not rates:
-        rates = re.findall(r"([0-9]+[.,]?[0-9]*)\s*%", text)
-    if not terms:
-        terms = re.findall(r"([0-9]{1,3})\s*мес", text)
+    # 2) fallback по тексту страницы
+    text = soup.get_text(" ")
+    rates = re.findall(r"от\s*([0-9]+[.,]?[0-9]*)\s*%", text, re.IGNORECASE)
+    terms = re.findall(r"до\s*([0-9]{1,3})\s*мес", text, re.IGNORECASE)
 
     if not rates or not terms:
         raise RuntimeError(f"Не найдены ставки/сроки на странице {url}")
 
     rate = float(min(rates).replace(",", "."))
     term = int(max(terms))
+    return {"Ставка": rate, "Срок": term,
+            "Обновлено": datetime.utcnow().isoformat() + "Z"}
 
-    return {
-        "Ставка": rate,
-        "Срок": term,
-        "Обновлено": datetime.utcnow().isoformat() + "Z"
-    }
 
 def main():
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
@@ -93,19 +96,20 @@ def main():
         except Exception as e:
             print(f"❌ Ошибка при парсинге {key}: {e}")
 
-    # Загружаем существующий файл, если есть
+    # читаем старый файл, если есть
     if os.path.exists(OUTPUT_PATH):
         with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
             current = json.load(f)
     else:
         current = {}
 
-    # Мёрджим и сохраняем
+    # мерджим и сохраняем
     current.update(updated)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(current, f, ensure_ascii=False, indent=2)
 
     print(f"✅ Сохранено {len(updated)} продуктов в {OUTPUT_PATH}")
+
 
 if __name__ == "__main__":
     main()

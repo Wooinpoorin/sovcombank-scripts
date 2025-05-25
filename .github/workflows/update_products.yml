@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    # каждый день в 6:00 утра по UTC
+    # каждый день в 6:00 по UTC
     - cron: '0 6 * * *'
   workflow_dispatch: {}
 
@@ -16,6 +16,8 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
+          # нужно, чтобы git pull/rebase работал без ошибок
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Установить Python
@@ -24,11 +26,13 @@ jobs:
           python-version: '3.10'
 
       - name: Установить зависимости
-        run: |
-          pip install requests beautifulsoup4 cloudscraper
+        run: pip install requests beautifulsoup4 cloudscraper
 
       - name: Запустить сбор условий
         run: python data/auto_update_products.py
+
+      - name: Pull remote changes
+        run: git pull --rebase origin main
 
       - name: Commit & Push
         run: |
