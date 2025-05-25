@@ -21,9 +21,7 @@
         Number(document.querySelector('.credit-remaining')?.innerText.trim()) || 0,
       operations: Array.from(document.querySelectorAll('#ops-table tr')).map(tr => {
         const mccCell = tr.cells[4];
-        return {
-          mcc: mccCell ? Number(mccCell.innerText.trim()) : null
-        };
+        return { mcc: mccCell ? Number(mccCell.innerText.trim()) : null };
       })
     };
   }
@@ -31,8 +29,8 @@
   function matchesRule(rule, client) {
     const t = rule.trigger;
     if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
-      const n = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
-      if (n >= (t.min_count || 1)) return true;
+      const cnt = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
+      if (cnt >= (t.min_count || 1)) return true;
     }
     if (t.client_category && client.category === t.client_category) return true;
     if (t.credit_remaining_months != null
@@ -45,24 +43,21 @@
       const arr = phrases[block] || [];
       return arr[Math.floor(Math.random() * arr.length)] || '';
     }).join(' ');
-
-    const prod = products[rule.target_product] || {};
-    const rate = prod.Ставка != null ? `${prod.Ставка}%` : '';
-    const term = prod.Срок != null ? `${prod.Срок} мес.` : '';
-
     return text
       .replace(/{{ФИО}}/g, client.fullName)
       .replace(/{{Имя}}/g, client.firstName)
       .replace(/{{Отчество}}/g, client.patronymic)
       .replace(/{{credit_remaining_months}}/g, client.credit_remaining_months)
-      .replace(/{{ставка}}/g, rate)
-      .replace(/{{срок}}/g, term);
+      .replace(/{{ставка}}/g, products[rule.target_product]?.Ставка != null
+                                 ? `${products[rule.target_product].Ставка}%` : '—')
+      .replace(/{{срок}}/g, products[rule.target_product]?.Срок != null
+                                 ? `${products[rule.target_product].Срок} мес.` : '—');
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
       const [{ result: client }] = await chrome.scripting.executeScript({
-        target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
+        target: { tabId: (await chrome.tabs.query({ active:true, currentWindow:true }))[0].id },
         func: extractClient
       });
 
@@ -75,21 +70,31 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
+      // получаем пары [ключ правила, правило] и фильтруем
       const matched = Object.entries(rules)
         .sort(([, a], [, b]) => a.priority - b.priority)
         .filter(([, rule]) => matchesRule(rule, client));
 
+      // если ничего не подошло — кладём default
       if (matched.length === 0 && rules.default) {
         matched.push(['default', rules.default]);
       }
 
-      matched.forEach(([key, rule], idx) => {
-        const script = generateScript(phrases, products, client, rule);
-        const productName = products[rule.target_product]?.Описание || key;
+      matched.forEach(([ruleKey, rule], idx) => {
+        const prod = products[rule.target_product] || {};
+        // русское название продукта
+        const productName = prod.Описание || rule.target_product;
+        // ставка и срок для превью
+        const rate = prod.Ставка != null ? `${prod.Ставка}%` : '—';
+        const term = prod.Срок != null ? `${prod.Срок} мес.` : '—';
+        const prelim = `Предварительные условия: ставка ${rate}, срок ${term}.`;
+
+        const body = generateScript(phrases, products, client, rule);
+
         container.insertAdjacentHTML('beforeend',
           `<div class="script-card">
              <strong>Скрипт #${idx + 1}: ${productName}</strong>
-             <p>${script}</p>
+             <p>${prelim} ${body}</p>
            </div>`
         );
       });
