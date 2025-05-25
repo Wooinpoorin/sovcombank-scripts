@@ -12,27 +12,25 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repo (full history)
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Setup Python
+      - name: Setup Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 cloudscraper
+        run: |
+          pip install requests beautifulsoup4 cloudscraper
 
       - name: Run updater
         run: python data/auto_update_products.py
 
-      - name: Pull remote changes
-        run: git pull --rebase origin main
-
-      - name: Commit updated products.json
+      - name: Commit changes if any
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
