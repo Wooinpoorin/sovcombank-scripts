@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    # каждый день в 6:00 по UTC
+    # каждый день в 06:00 UTC
     - cron: '0 6 * * *'
   workflow_dispatch: {}
 
@@ -16,25 +16,24 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          # нужно, чтобы git pull/rebase работал без ошибок
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Установить Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Установить зависимости
+      - name: Install dependencies
         run: pip install requests beautifulsoup4 cloudscraper
 
-      - name: Запустить сбор условий
+      - name: Run updater
         run: python data/auto_update_products.py
 
       - name: Pull remote changes
         run: git pull --rebase origin main
 
-      - name: Commit & Push
+      - name: Commit updated products.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -42,7 +41,4 @@ jobs:
           git diff --quiet || git commit -m "chore: auto-update products.json [skip ci]"
 
       - name: Push changes
-        uses: ad-m/github-push-action@v0.6.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+        run: git push origin HEAD:main
