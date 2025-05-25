@@ -1,11 +1,11 @@
 name: Обновление products.json
 
-# Даём действие право писать в репозиторий
 permissions:
   contents: write
 
 on:
   schedule:
+    # каждый день в 6:00 утра по UTC
     - cron: '0 6 * * *'
   workflow_dispatch: {}
 
@@ -13,23 +13,22 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
         with:
-          # без этого checkout по умолчанию делает read-only clone
           persist-credentials: true
 
-      - name: Установить Python и зависимости
+      - name: Установить Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Установить библиотеки
-        run: pip install requests PyMuPDF beautifulsoup4
+      - name: Установить зависимости
+        run: |
+          pip install requests beautifulsoup4 cloudscraper
 
-      - name: Запустить обновление
-        env:
-          SOURCE_URL: https://prod-api.sovcombank.ru/document/index?id=6335
-        run: python data/auto_update_products.py "$SOURCE_URL" data/products.json
+      - name: Запустить сбор условий
+        run: python data/auto_update_products.py
 
       - name: Commit & Push
         run: |
