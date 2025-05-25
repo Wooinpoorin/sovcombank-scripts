@@ -5,7 +5,6 @@ permissions:
 
 on:
   schedule:
-    # каждый день в 06:00 UTC
     - cron: '0 6 * * *'
   workflow_dispatch: {}
 
@@ -41,4 +40,8 @@ jobs:
           git diff --quiet || git commit -m "chore: auto-update products.json [skip ci]"
 
       - name: Push changes
-        run: git push origin HEAD:main
+        uses: ad-m/github-push-action@v0.6.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
+          force: true
