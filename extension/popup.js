@@ -30,14 +30,11 @@
 
   function matchesRule(rule, client) {
     const t = rule.trigger;
-    // Проверка по MCC-кодам
     if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
       const n = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
       if (n >= (t.min_count || 1)) return true;
     }
-    // Проверка категории клиента
     if (t.client_category && client.category === t.client_category) return true;
-    // Проверка остаточного срока кредита
     if (t.credit_remaining_months != null
         && client.credit_remaining_months <= t.credit_remaining_months) return true;
     return false;
@@ -78,22 +75,20 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
-      const matched = Object.values(rules)
-        .sort((a, b) => a.priority - b.priority)
-        .filter(rule => matchesRule(rule, client));
+      const matched = Object.entries(rules)
+        .sort(([, a], [, b]) => a.priority - b.priority)
+        .filter(([, rule]) => matchesRule(rule, client));
 
-      // Если нет совпадающих правил, используем default
       if (matched.length === 0 && rules.default) {
-        matched.push(rules.default);
+        matched.push(['default', rules.default]);
       }
 
-      // Выводим ВСЕ подходящие скрипты без ограничений
-      matched.forEach((rule, idx) => {
+      matched.forEach(([key, rule], idx) => {
         const script = generateScript(phrases, products, client, rule);
-        const title = rule.target_product;
+        const productName = products[rule.target_product]?.Описание || key;
         container.insertAdjacentHTML('beforeend',
           `<div class="script-card">
-             <strong>Скрипт #${idx + 1}: ${title}</strong>
+             <strong>Скрипт #${idx + 1}: ${productName}</strong>
              <p>${script}</p>
            </div>`
         );
