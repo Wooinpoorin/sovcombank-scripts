@@ -1,90 +1,83 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import json
 import re
 from datetime import datetime
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-}
+# Собираем Cloudflare-scraper-сессию
+scraper = cloudscraper.create_scraper(
+    browser={'custom': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/115.0.0.0 Safari/537.36'}
+)
 
+# Словарь URL для трёх продуктов
 URLS = {
-    "online_cash_loan": "https://sovcombank.ru/apply/credit/onlajn-zayavka-na-kredit-nalichnymi/",
-    "car_pledge_loan":  "https://sovcombank.ru/credits/cash/pod-zalog-avto",
-    "real_estate_pledge_loan": "https://sovcombank.ru/credits/pod-zalog"
+    "online_cash_loan":       "https://sovcombank.ru/apply/credit/onlajn-zayavka-na-kredit-nalichnymi/",
+    "car_pledge_loan":        "https://sovcombank.ru/credits/cash/pod-zalog-avto",
+    "real_estate_pledge_loan":"https://sovcombank.ru/credits/pod-zalog"
 }
 
 OUTPUT_PATH = os.getenv("OUTPUT_PATH", "data/products.json")
 
-def parse_conditions(url, rate_pattern, term_pattern, description):
-    resp = requests.get(url, headers=HEADERS)
+def parse_conditions(url: str) -> dict:
+    """
+    Универсально парсим любую страницу:
+    — вытягиваем из текста минимальную ставку «от X%»
+    — максимальный срок «до Y мес»
+    """
+    resp = scraper.get(url)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
 
-    content_text = soup.get_text(separator=" ")
+    text = BeautifulSoup(resp.text, "html.parser") \
+             .get_text(separator=" ")
 
-    rates = re.findall(rate_pattern, content_text)
-    terms = re.findall(term_pattern, content_text)
+    # регулярки «от 12,5%» и «до 60 мес»
+    rates = re.findall(r"от\s*([0-9]+[.,]?[0-9]*)\s*%", text)
+    terms = re.findall(r"до\s*([0-9]{1,3})\s*мес", text)
 
     if not rates or not terms:
-        raise ValueError(f"Не найдены условия на странице: {url}")
+        raise RuntimeError(f"Не найдены ставки/сроки на странице {url}")
+
+    # минимальная ставка, максимальный срок
+    rate = float(min(rates).replace(",", "."))
+    term = int(max(terms))
 
     return {
-        "Ставка": float(rates[0].replace(',', '.')),
-        "Срок": int(terms[0]),
-        "Описание": description,
+        "Ставка":   rate,
+        "Срок":     term,
         "Обновлено": datetime.utcnow().isoformat() + "Z"
     }
 
 def main():
-    products = {}
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    updated = {}
 
-    parsers = {
-        "online_cash_loan": {
-            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
-            "term_pattern": r'до\s+(\d+)\s+мес',
-            "description": "Кредит наличными онлайн"
-        },
-        "car_pledge_loan": {
-            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
-            "term_pattern": r'до\s+(\d+)\s+месяц',
-            "description": "Кредит под залог авто"
-        },
-        "real_estate_pledge_loan": {
-            "rate_pattern": r'от\s+(\d+[,.]?\d*)%',
-            "term_pattern": r'до\s+(\d+)\s+месяц',
-            "description": "Кредит под залог недвижимости"
-        }
-    }
-
-    for product, settings in parsers.items():
+    for key, url in URLS.items():
         try:
-            products[product] = parse_conditions(
-                URLS[product],
-                settings["rate_pattern"],
-                settings["term_pattern"],
-                settings["description"]
-            )
-            print(f"Parsed {product}: {products[product]}")
+            updated[key] = parse_conditions(url)
+            print(f"Parsed {key}: {updated[key]}")
         except Exception as e:
-            print(f"Ошибка при парсинге {product}: {e}")
+            print(f"Ошибка при парсинге {key}: {e}")
 
-    # Загрузка существующих данных и обновление
+    # читаем старый products.json (если есть) и мёрджим
     if os.path.exists(OUTPUT_PATH):
         with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
-            current_products = json.load(f)
+            current = json.load(f)
     else:
-        current_products = {}
+        current = {}
 
-    current_products.update(products)
+    current.update(updated)
 
+    # сохраняем назад
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(current_products, f, ensure_ascii=False, indent=2)
+        json.dump(current, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ Данные продуктов успешно обновлены и сохранены в {OUTPUT_PATH}")
+    print(f"✅ Сохранено {len(updated)} продуктов в {OUTPUT_PATH}")
 
 if __name__ == "__main__":
     main()
