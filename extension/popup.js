@@ -37,50 +37,58 @@
   function pickRandom(arr) {
     return arr[Math.floor(Math.random() * arr.length)] || '';
   }
+
   function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
+  // Словарь соответствия правил продуктам и человекочитаемых названий
+  const PRODUCT_ALIASES = {
+    prime_plus:              ['prime_plus', 'Кредит Прайм Плюс'],
+    car_pledge_loan:         ['car_pledge_loan', 'Автокредит под залог авто'],
+    real_estate_pledge_loan: ['real_estate_pledge_loan', 'Кредит под залог недвижимости']
+  };
+
+  // Формируем строку "Предварительные условия" из продукта
   function formatConditions(product) {
-    if (!product) return '';
     const parts = [];
-    // always include rate with % (or placeholder)
-    const rateText = product.Ставка != null ? `${product.Ставка}%` : '—%';
+    // ставка всегда есть
+    const rateText = product?.Ставка != null ? `${product.Ставка}%` : '—%';
     parts.push(`ставка ${rateText}`);
-    if (product.Срок != null && product.Срок > 0)            parts.push(`срок ${product.Срок} мес.`);
-    if (product.cashback != null)        parts.push(`кэшбэк ${product.cashback}%`);
-    if (product.saving != null)          parts.push(`экономия ${product.saving} ₽`);
-    if (product.discount != null)        parts.push(`скидка ${product.discount}%`);
-    if (product.installment_months != null) parts.push(`рассрочка ${product.installment_months} мес.`);
+    if (product?.Срок)           parts.push(`срок ${product.Срок} мес.`);
+    if (product?.cashback != null)        parts.push(`кэшбэк ${product.cashback}%`);
+    if (product?.saving != null)          parts.push(`экономия ${product.saving} ₽`);
+    if (product?.discount != null)        parts.push(`скидка ${product.discount}%`);
+    if (product?.installment_months) parts.push(`рассрочка ${product.installment_months} мес.`);
     return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
+  // Собираем текст скрипта, подставляя фразы и плейсхолдеры
   function buildScript(phrases, product, client, rule) {
-    const rateText = product?.Ставка != null ? `${product.Ставка}%` : '—%';
-    const termText = product?.Срок   != null ? `${product.Срок} мес.`  : '— мес.';
     const values = {
       '{{ФИО}}': client.fullName,
       '{{Имя}}': client.firstName,
       '{{Отчество}}': client.patronymic,
       '{{credit_remaining_months}}': client.credit_remaining_months,
-      '{{ставка}}': rateText,
-      '{{срок}}': termText
+      '{{ставка}}': product?.Ставка != null ? `${product.Ставка}%` : '—%',
+      '{{срок}}': product?.Срок   != null ? `${product.Срок} мес.`  : '— мес.'
     };
     const fill = txt => Object.entries(values)
       .reduce((t,[ph,v]) => t.replace(new RegExp(ph,'g'), v), txt);
 
     const parts = [];
 
+    // greeting
     if (rule.phrase_blocks.includes('greeting')) {
       parts.push(fill(pickRandom(phrases.greeting)));
     }
-
+    // hooks / interest
     ['hook','interest_auto','interest_home','interest_travel','interest_groceries'].forEach(block => {
       if (rule.phrase_blocks.includes(block)) {
         parts.push(fill(pickRandom(phrases[block])));
       }
     });
-
+    // offer + usp
     if (rule.phrase_blocks.includes('offer_intro') && rule.phrase_blocks.includes('usp')) {
       const intro = fill(pickRandom(phrases.offer_intro));
       const usp   = fill(pickRandom(phrases.usp));
@@ -88,7 +96,7 @@
     } else if (rule.phrase_blocks.includes('offer_intro')) {
       parts.push(capitalize(fill(pickRandom(phrases.offer_intro))));
     }
-
+    // special blocks
     if (rule.phrase_blocks.includes('auto_pledge')) {
       parts.push(fill(pickRandom(phrases.auto_pledge)));
     }
@@ -104,20 +112,20 @@
     if (rule.phrase_blocks.includes('objection')) {
       parts.push(fill(pickRandom(phrases.objection)));
     }
+    // closing
     if (rule.phrase_blocks.includes('closing')) {
       parts.push(fill(pickRandom(phrases.closing)));
     }
 
-    let text = parts.map(s => s.trim()).join(' ');
-    // ensure every script mentions rate
-    if (!text.includes('%')) {
-      text = `Ставка ${rateText}. ` + text;
-    }
-    return text;
+    return parts
+      .map(s => s.trim())
+      .filter(Boolean)
+      .join(' ');
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
+      // получаем клиента
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
         func: extractClient
@@ -132,18 +140,19 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
+      // отбираем и сортируем правила, оставляем только те, что есть в aliases
       const matched = Object.entries(rules)
+        .filter(([,r]) => PRODUCT_ALIASES[r.target_product])
         .sort(([,a],[,b]) => a.priority - b.priority)
         .filter(([,r]) => matchesRule(r, client));
-      if (matched.length === 0 && rules.default) matched.push(['default', rules.default]);
 
+      if (matched.length === 0 && rules.default && PRODUCT_ALIASES[rules.default.target_product]) {
+        matched.push(['default', rules.default]);
+      }
+
+      // для каждого правила генерируем карточку
       matched.forEach(([ruleKey, rule], idx) => {
-        const ALIASES = {
-          prime_plus:             ['prime_plus', 'Кредит Прайм Плюс'],
-          car_pledge_loan:        ['car_pledge_loan', 'Автокредит под залог авто'],
-          real_estate_pledge_loan:['real_estate_pledge_loan', 'Кредит под залог недвижимости']
-        };
-        const [prodKey, humanName] = ALIASES[rule.target_product] || [rule.target_product, rule.target_product];
+        const [prodKey, humanName] = PRODUCT_ALIASES[rule.target_product];
         const product = products[prodKey];
 
         const prelim = formatConditions(product);
@@ -157,9 +166,9 @@
         `;
         container.appendChild(card);
       });
-    } catch (e) {
-      console.error(e);
-      alert('Ошибка генерации скриптов: ' + e.message);
+    } catch (err) {
+      console.error(err);
+      alert('Ошибка генерации скриптов: ' + err.message);
     }
   });
 })();
