@@ -41,47 +41,46 @@
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  // Собираем «предварительные условия» из полей продукта
   function formatConditions(product) {
     if (!product) return '';
     const parts = [];
-    if (product.Ставка != null)           parts.push(`ставка ${product.Ставка}%`);
-    if (product.Срок != null && product.Срок > 0) parts.push(`срок ${product.Срок} мес.`);
+    // always include rate with % (or placeholder)
+    const rateText = product.Ставка != null ? `${product.Ставка}%` : '—%';
+    parts.push(`ставка ${rateText}`);
+    if (product.Срок != null && product.Срок > 0)            parts.push(`срок ${product.Срок} мес.`);
     if (product.cashback != null)        parts.push(`кэшбэк ${product.cashback}%`);
     if (product.saving != null)          parts.push(`экономия ${product.saving} ₽`);
     if (product.discount != null)        parts.push(`скидка ${product.discount}%`);
     if (product.installment_months != null) parts.push(`рассрочка ${product.installment_months} мес.`);
-    return parts.length
-      ? `Предварительные условия: ${parts.join(', ')}.`
-      : '';
+    return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
-  function buildScript(phrases, prod, client, rule) {
-    // подготовка значений для заполнения плейсхолдеров
+  function buildScript(phrases, product, client, rule) {
+    const rateText = product?.Ставка != null ? `${product.Ставка}%` : '—%';
+    const termText = product?.Срок   != null ? `${product.Срок} мес.`  : '— мес.';
     const values = {
       '{{ФИО}}': client.fullName,
       '{{Имя}}': client.firstName,
       '{{Отчество}}': client.patronymic,
       '{{credit_remaining_months}}': client.credit_remaining_months,
-      '{{ставка}}': prod?.Ставка != null ? `${prod.Ставка}%` : '—',
-      '{{срок}}': prod?.Срок   != null ? `${prod.Срок} мес.`  : '—'
+      '{{ставка}}': rateText,
+      '{{срок}}': termText
     };
     const fill = txt => Object.entries(values)
       .reduce((t,[ph,v]) => t.replace(new RegExp(ph,'g'), v), txt);
 
     const parts = [];
 
-    // greeting
     if (rule.phrase_blocks.includes('greeting')) {
       parts.push(fill(pickRandom(phrases.greeting)));
     }
-    // hooks / interest
+
     ['hook','interest_auto','interest_home','interest_travel','interest_groceries'].forEach(block => {
       if (rule.phrase_blocks.includes(block)) {
         parts.push(fill(pickRandom(phrases[block])));
       }
     });
-    // offer_intro + usp
+
     if (rule.phrase_blocks.includes('offer_intro') && rule.phrase_blocks.includes('usp')) {
       const intro = fill(pickRandom(phrases.offer_intro));
       const usp   = fill(pickRandom(phrases.usp));
@@ -89,7 +88,7 @@
     } else if (rule.phrase_blocks.includes('offer_intro')) {
       parts.push(capitalize(fill(pickRandom(phrases.offer_intro))));
     }
-    // special blocks
+
     if (rule.phrase_blocks.includes('auto_pledge')) {
       parts.push(fill(pickRandom(phrases.auto_pledge)));
     }
@@ -105,15 +104,16 @@
     if (rule.phrase_blocks.includes('objection')) {
       parts.push(fill(pickRandom(phrases.objection)));
     }
-    // closing
     if (rule.phrase_blocks.includes('closing')) {
       parts.push(fill(pickRandom(phrases.closing)));
     }
 
-    return parts
-      .filter(s => s)
-      .map(s => s.trim())
-      .join(' ');
+    let text = parts.map(s => s.trim()).join(' ');
+    // ensure every script mentions rate
+    if (!text.includes('%')) {
+      text = `Ставка ${rateText}. ` + text;
+    }
+    return text;
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
@@ -132,32 +132,28 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
-      // отбор правил
       const matched = Object.entries(rules)
         .sort(([,a],[,b]) => a.priority - b.priority)
         .filter(([,r]) => matchesRule(r, client));
       if (matched.length === 0 && rules.default) matched.push(['default', rules.default]);
 
-      // для каждого правила собираем скрипт
       matched.forEach(([ruleKey, rule], idx) => {
-        const PRODUCT_ALIASES = {
+        const ALIASES = {
           prime_plus:             ['prime_plus', 'Кредит Прайм Плюс'],
           car_pledge_loan:        ['car_pledge_loan', 'Автокредит под залог авто'],
           real_estate_pledge_loan:['real_estate_pledge_loan', 'Кредит под залог недвижимости']
         };
-        const [prodKey, humanName] = PRODUCT_ALIASES[rule.target_product] || [rule.target_product, rule.target_product];
-        const prod = products[prodKey];
+        const [prodKey, humanName] = ALIASES[rule.target_product] || [rule.target_product, rule.target_product];
+        const product = products[prodKey];
 
-        // строим предварительные условия и тело скрипта
-        const prelim = formatConditions(prod);
-        const text = buildScript(phrases, prod, client, rule);
+        const prelim = formatConditions(product);
+        const scriptText = buildScript(phrases, product, client, rule);
 
-        // рендерим карточку
         const card = document.createElement('div');
         card.className = 'script-card';
         card.innerHTML = `
           <strong>Скрипт #${idx + 1}: ${humanName}</strong>
-          <p>${prelim} ${text}</p>
+          <p>${prelim} ${scriptText}</p>
         `;
         container.appendChild(card);
       });
