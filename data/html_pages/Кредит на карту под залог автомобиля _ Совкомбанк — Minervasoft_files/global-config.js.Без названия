@@ -1,0 +1,11 @@
+(function() {
+    window.notificationApiEnable = true;
+    window.m_ym = null;
+    window.brand = 'minerva';
+    window.lms = true;
+    window.$.fancybox.defaults.idleTime = false;
+    window.$.fancybox.defaults.animationEffect = false;
+    window.defaultRoute = 'content';
+    window.$.lang = 'ru';
+    saveInlineSearchPosition = true;
+})();
