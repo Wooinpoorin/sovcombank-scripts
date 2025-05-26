@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Онлайн заявка на кредит наличными</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f4f4;
+        }
+        header, footer {
+            background-color: #003366;
+            color: white;
+            text-align: center;
+            padding: 20px 10px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .loan-conditions {
+            margin-bottom: 20px;
+        }
+        .loan-conditions ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .loan-conditions li {
+            margin-bottom: 10px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        input, select, button {
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #003366;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background-color: #0055a5;
+        }
+        .result {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h2>Кредит Онлайн</h2>
+    </header>
+
+    <div class="container">
+        <h1>Онлайн заявка на кредит наличными</h1>
+        <div class="loan-conditions">
+            <p><strong>Условия кредита:</strong></p>
+            <ul>
+                <li>Сумма: от 50 000 до 3 000 000 ₽</li>
+                <li>Срок: от 12 до 60 месяцев</li>
+                <li>Процентная ставка: от 6,9% годовых</li>
+                <li>Без залога и поручителей</li>
+            </ul>
+        </div>
+
+        <form onsubmit="event.preventDefault(); calculateLoan();">
+            <label>ФИО:</label>
+            <input type="text" placeholder="Введите ваше полное имя" required>
+
+            <label>Сумма кредита (₽):</label>
+            <input type="number" id="amount" placeholder="Например, 500000" required>
+
+            <label>Срок (месяцев):</label>
+            <select id="term" required>
+                <option value="12">12</option>
+                <option value="24">24</option>
+                <option value="36">36</option>
+                <option value="48">48</option>
+                <option value="60">60</option>
+            </select>
+
+            <label>Номер телефона:</label>
+            <input type="tel" placeholder="8 (___) ___-__-__" required>
+
+            <button type="submit">Рассчитать платёж</button>
+            <div id="monthly-payment" class="result"></div>
+        </form>
+    </div>
+
+    <footer>
+        &copy; 2025 Ваш Банк. Все права защищены.
+    </footer>
+
+    <script>
+        function calculateLoan() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            const term = parseInt(document.getElementById('term').value);
+            const annualRate = 6.9;
+            const monthlyRate = (annualRate / 100) / 12;
+
+            const monthlyPayment = (amount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -term));
+            document.getElementById('monthly-payment').textContent = 
+                'Ежемесячный платёж: ' + monthlyPayment.toFixed(2) + ' ₽';
+        }
+    </script>
+</body>
+</html>
