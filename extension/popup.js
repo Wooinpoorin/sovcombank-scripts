@@ -34,27 +34,18 @@
     return false;
   }
 
-  // Алиасы для человекочитаемых названий и корректного поиска данных
+  // Сопоставление ключей правил с реальными продуктами и человекочитаемыми названиями
   const PRODUCT_ALIASES = {
-    // ключ в rules.json      →  [ключ в products.json,            русское название]
-    consumer_loan:         ['online_cash_loan',      'Кредит наличными онлайн'],
-    refinance_loan:        ['refinance_offer',       'Рефинансирование кредитов'],
-    premium_loan:          ['premium_loan',          'Премиальный кредит для VIP'],
-    car_loan:              ['car_loan',              'Автокредит на выгодных условиях'],
-    travel_loan:           ['travel_loan',           'Кредит на путешествия'],
-    grocery_loan:          ['grocery_loan',          'Кредит для покупок продуктов'],
-    halva_card:            ['halva_card',            'Карта рассрочки Halva'],
-    installment_card:      ['installment_card',      'Карта рассрочки до 24 мес.'],
+    prime_plus:            ['prime_plus', 'Кредит Прайм Плюс'],
+    car_pledge_loan:       ['car_pledge_loan', 'Автокредит под залог авто'],
+    real_estate_pledge_loan:['real_estate_pledge_loan', 'Кредит под залог недвижимости']
   };
 
   function generateScriptText(phrases, products, client, rule, actualKey) {
-    // генерируем основной текст
     const body = rule.phrase_blocks.map(block => {
       const arr = phrases[block] || [];
       return arr[Math.floor(Math.random() * arr.length)] || '';
     }).join(' ');
-
-    // подставляем все плейсхолдеры
     return body
       .replace(/{{ФИО}}/g, client.fullName)
       .replace(/{{Имя}}/g, client.firstName)
@@ -80,24 +71,20 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
-      // отфильтровываем правила
+      // Отбор и сортировка правил
       const matched = Object.entries(rules)
         .sort(([,a],[,b]) => a.priority - b.priority)
         .filter(([,rule]) => matchesRule(rule, client));
 
-      if (matched.length === 0 && rules.default) matched.push(['default', rules.default]);
+      if (matched.length === 0 && rules.default) {
+        matched.push(['default', rules.default]);
+      }
 
       matched.forEach(([ruleKey, rule], idx) => {
-        // решаем, из какого ключа products брать данные и как назвать
-        const [actualKey, humanName] = PRODUCT_ALIASES[rule.target_product] 
-                                       || [rule.target_product, rule.target_product];
-
-        // предварительные условия
+        const [actualKey, humanName] = PRODUCT_ALIASES[rule.target_product] || [rule.target_product, rule.target_product];
         const rate = products[actualKey]?.Ставка != null ? `${products[actualKey].Ставка}%` : '—';
         const term = products[actualKey]?.Срок   != null ? `${products[actualKey].Срок} мес.`  : '—';
         const prelim = `Предварительные условия: ставка ${rate}, срок ${term}.`;
-
-        // основной текст
         const text = generateScriptText(phrases, products, client, rule, actualKey);
 
         container.insertAdjacentHTML('beforeend', `
