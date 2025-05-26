@@ -1,114 +1,74 @@
 {
   "vip_client": {
     "priority": 5,
-    "trigger": {
-      "client_category": "VIP"
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "premium_loan"
+    "trigger": { "client_category": "VIP" },
+    "phrase_blocks": ["greeting", "generic_offer", "usp", "closing"],
+    "target_product": "prime_plus"
   },
   "fuel_auto": {
     "priority": 10,
-    "trigger": {
-      "mcc_codes": [5541, 5542],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","interest_auto","offer_intro","usp","closing"],
-    "target_product": "car_loan"
+    "trigger": { "mcc_codes": [5541], "min_count": 1 },
+    "phrase_blocks": ["greeting", "interest_auto", "auto_pledge", "closing"],
+    "target_product": "car_pledge_loan"
   },
   "home_improvement": {
     "priority": 20,
-    "trigger": {
-      "mcc_codes": [5200, 5211, 5712],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","interest_home","hook","usp","closing"],
-    "target_product": "consumer_loan"
+    "trigger": { "mcc_codes": [5211], "min_count": 1 },
+    "phrase_blocks": ["greeting", "interest_home", "real_estate", "closing"],
+    "target_product": "real_estate_pledge_loan"
   },
-  "grocery_shopper": {
+  "electronics_shopping": {
     "priority": 30,
-    "trigger": {
-      "mcc_codes": [5411, 5422],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","interest_groceries","offer_intro","usp","closing"],
-    "target_product": "grocery_loan"
-  },
-  "digital_life": {
-    "priority": 40,
-    "trigger": {
-      "mcc_codes": [5732, 5733, 5735],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
-  },
-  "child_products": {
-    "priority": 45,
-    "trigger": {
-      "mcc_codes": [5945],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
-  },
-  "restaurants_fastfood": {
-    "priority": 50,
-    "trigger": {
-      "mcc_codes": [5812, 5814],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
+    "trigger": { "mcc_codes": [5732, 5735], "min_count": 1 },
+    "phrase_blocks": ["greeting", "offer_intro", "usp", "closing"],
+    "target_product": "prime_plus"
   },
   "online_shopping": {
-    "priority": 55,
-    "trigger": {
-      "mcc_codes": [5699, 5942],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","hook","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
+    "priority": 40,
+    "trigger": { "mcc_codes": [5699, 5942], "min_count": 1 },
+    "phrase_blocks": ["greeting", "hook", "offer_intro", "usp", "closing"],
+    "target_product": "prime_plus"
   },
-  "health_care": {
+  "fastfood": {
+    "priority": 50,
+    "trigger": { "mcc_codes": [5812], "min_count": 1 },
+    "phrase_blocks": ["greeting", "offer_intro", "usp", "closing"],
+    "target_product": "prime_plus"
+  },
+  "grocery_shopper": {
     "priority": 60,
-    "trigger": {
-      "mcc_codes": [5912, 5977],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
+    "trigger": { "mcc_codes": [5411], "min_count": 1 },
+    "phrase_blocks": ["greeting", "interest_groceries", "offer_intro", "usp", "closing"],
+    "target_product": "prime_plus"
+  },
+  "kids_shopping": {
+    "priority": 70,
+    "trigger": { "mcc_codes": [5945], "min_count": 1 },
+    "phrase_blocks": ["greeting", "offer_intro", "usp", "closing"],
+    "target_product": "prime_plus"
   },
   "travel_buff": {
-    "priority": 65,
-    "trigger": {
-      "mcc_codes": [4511, 4121],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","interest_travel","hook","offer_intro","closing"],
-    "target_product": "travel_loan"
+    "priority": 75,
+    "trigger": { "mcc_codes": [4511, 4121], "min_count": 1 },
+    "phrase_blocks": ["greeting", "interest_travel", "offer_intro", "closing"],
+    "target_product": "prime_plus"
   },
-  "education_support": {
-    "priority": 70,
-    "trigger": {
-      "mcc_codes": [8299],
-      "min_count": 1
-    },
-    "phrase_blocks": ["intro","offer_intro","usp","closing"],
-    "target_product": "consumer_loan"
+  "soon_expiring_objection": {
+    "priority": 85,
+    "trigger": { "credit_remaining_months": 3 },
+    "phrase_blocks": ["greeting", "usp", "objection", "closing"],
+    "target_product": "prime_plus"
   },
-  "soon_expiring": {
-    "priority": 80,
-    "trigger": {
-      "credit_remaining_months": 6
-    },
-    "phrase_blocks": ["intro","usp","closing"],
-    "target_product": "refinance_loan"
+  "collect_info": {
+    "priority": 95,
+    "trigger": {},
+    "phrase_blocks": ["greeting", "context_question", "sum_term_question", "closing"],
+    "target_product": "prime_plus"
   },
   "default": {
     "priority": 100,
     "trigger": {},
-    "phrase_blocks": ["intro","offer_intro","closing"],
-    "target_product": "consumer_loan"
+    "phrase_blocks": ["greeting", "generic_offer", "closing"],
+    "target_product": "prime_plus"
   }
 }
