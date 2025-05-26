@@ -40,6 +40,7 @@ jobs:
             echo "No changes to commit."
           else
             git commit -m "chore: auto-update products.json [skip ci]"
+          fi
 
       - name: Push changes
         uses: ad-m/github-push-action@v0.6.0
