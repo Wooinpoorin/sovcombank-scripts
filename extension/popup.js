@@ -2,7 +2,7 @@
   const BASE = 'https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/';
 
   async function loadJSON(name) {
-    const res = await fetch(BASE + name);
+    const res = await fetch(`${BASE}${name}`);
     if (!res.ok) throw new Error(`${name} загрузка: ${res.status}`);
     return res.json();
   }
@@ -11,164 +11,145 @@
     const fioEl = document.querySelector('#fio');
     const fullName = fioEl ? fioEl.textContent.trim() : '';
     const parts = fullName.split(/\s+/);
+    const mccs = Array.from(document.querySelectorAll('#ops-table tr'))
+      .map(tr => Number(tr.cells[4]?.textContent.trim()) || null);
     return {
       fullName,
       firstName: parts[1] || '',
       patronymic: parts[2] || '',
       category: document.querySelector('.client-category')?.textContent.trim() || '',
       credit_remaining_months: Number(document.querySelector('.credit-remaining')?.textContent.trim()) || 0,
-      operations: Array.from(document.querySelectorAll('#ops-table tr')).map(tr => ({
-        mcc: Number(tr.cells[4]?.textContent.trim()) || null
-      }))
+      operations: mccs
     };
   }
 
-  function matchesRule(rule, client) {
-    const t = rule.trigger;
-    if (Array.isArray(t.mcc_codes) && t.mcc_codes.length) {
-      const cnt = client.operations.filter(op => t.mcc_codes.includes(op.mcc)).length;
-      if (cnt >= (t.min_count || 1)) return true;
+  function matchesRule(trigger, client) {
+    if (Array.isArray(trigger.mcc_codes) && trigger.mcc_codes.length) {
+      const count = client.operations.filter(mcc => trigger.mcc_codes.includes(mcc)).length;
+      if (count >= (trigger.min_count || 1)) return true;
     }
-    if (t.client_category && client.category === t.client_category) return true;
-    if (t.credit_remaining_months != null && client.credit_remaining_months <= t.credit_remaining_months) return true;
+    if (trigger.client_category && client.category === trigger.client_category) return true;
+    if (trigger.credit_remaining_months != null && client.credit_remaining_months <= trigger.credit_remaining_months) return true;
     return false;
   }
 
-  function pickRandom(arr) {
+  function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)] || '';
   }
 
-  function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-
-  // Словарь соответствия правил продуктам и человекочитаемых названий
-  const PRODUCT_ALIASES = {
-    prime_plus:              ['prime_plus', 'Кредит Прайм Плюс'],
-    car_pledge_loan:         ['car_pledge_loan', 'Автокредит под залог авто'],
-    real_estate_pledge_loan: ['real_estate_pledge_loan', 'Кредит под залог недвижимости']
+  const TARGET_PRODUCT_MAP = {
+    premium_loan:            'prime_plus',
+    car_loan:                'car_pledge_loan',
+    real_estate_pledge_loan: 'real_estate_pledge_loan'
   };
 
-  // Формируем строку "Предварительные условия" из продукта
-  function formatConditions(product) {
+  const PRODUCT_TITLES = {
+    prime_plus:            'Кредит Прайм Плюс',
+    car_pledge_loan:       'Автокредит под залог авто',
+    real_estate_pledge_loan:'Кредит под залог недвижимости'
+  };
+
+  function formatConditions(prod) {
     const parts = [];
-    // ставка всегда есть
-    const rateText = product?.Ставка != null ? `${product.Ставка}%` : '—%';
-    parts.push(`ставка ${rateText}`);
-    if (product?.Срок)           parts.push(`срок ${product.Срок} мес.`);
-    if (product?.cashback != null)        parts.push(`кэшбэк ${product.cashback}%`);
-    if (product?.saving != null)          parts.push(`экономия ${product.saving} ₽`);
-    if (product?.discount != null)        parts.push(`скидка ${product.discount}%`);
-    if (product?.installment_months) parts.push(`рассрочка ${product.installment_months} мес.`);
+    // ставка всегда
+    const rate = prod.Ставка != null ? `${prod.Ставка}%` : '—%';
+    parts.push(`ставка ${rate}`);
+    if (prod.Срок) parts.push(`срок ${prod.Срок} мес.`);
     return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
-  // Собираем текст скрипта, подставляя фразы и плейсхолдеры
-  function buildScript(phrases, product, client, rule) {
-    const values = {
-      '{{ФИО}}': client.fullName,
-      '{{Имя}}': client.firstName,
-      '{{Отчество}}': client.patronymic,
-      '{{credit_remaining_months}}': client.credit_remaining_months,
-      '{{ставка}}': product?.Ставка != null ? `${product.Ставка}%` : '—%',
-      '{{срок}}': product?.Срок   != null ? `${product.Срок} мес.`  : '— мес.'
-    };
-    const fill = txt => Object.entries(values)
-      .reduce((t,[ph,v]) => t.replace(new RegExp(ph,'g'), v), txt);
-
-    const parts = [];
-
-    // greeting
-    if (rule.phrase_blocks.includes('greeting')) {
-      parts.push(fill(pickRandom(phrases.greeting)));
-    }
-    // hooks / interest
-    ['hook','interest_auto','interest_home','interest_travel','interest_groceries'].forEach(block => {
-      if (rule.phrase_blocks.includes(block)) {
-        parts.push(fill(pickRandom(phrases[block])));
+  function fillPlaceholders(text, vals) {
+    return text.replace(/{{(ФИО|Имя|Отчество|credit_remaining_months|ставка|срок)}}/g, (m, key) => {
+      switch (key) {
+        case 'ФИО': return vals.fullName;
+        case 'Имя': return vals.firstName;
+        case 'Отчество': return vals.patronymic;
+        case 'credit_remaining_months': return String(vals.credit_remaining_months);
+        case 'ставка': return vals.rate;
+        case 'срок': return vals.term;
       }
+      return m;
     });
-    // offer + usp
-    if (rule.phrase_blocks.includes('offer_intro') && rule.phrase_blocks.includes('usp')) {
-      const intro = fill(pickRandom(phrases.offer_intro));
-      const usp   = fill(pickRandom(phrases.usp));
-      parts.push(capitalize(`${intro} ${usp}`));
-    } else if (rule.phrase_blocks.includes('offer_intro')) {
-      parts.push(capitalize(fill(pickRandom(phrases.offer_intro))));
-    }
-    // special blocks
-    if (rule.phrase_blocks.includes('auto_pledge')) {
-      parts.push(fill(pickRandom(phrases.auto_pledge)));
-    }
-    if (rule.phrase_blocks.includes('real_estate')) {
-      parts.push(fill(pickRandom(phrases.real_estate)));
-    }
-    if (rule.phrase_blocks.includes('context_question')) {
-      parts.push(fill(pickRandom(phrases.context_question)));
-    }
-    if (rule.phrase_blocks.includes('sum_term_question')) {
-      parts.push(fill(pickRandom(phrases.sum_term_question)));
-    }
-    if (rule.phrase_blocks.includes('objection')) {
-      parts.push(fill(pickRandom(phrases.objection)));
-    }
-    // closing
-    if (rule.phrase_blocks.includes('closing')) {
-      parts.push(fill(pickRandom(phrases.closing)));
-    }
-
-    return parts
-      .map(s => s.trim())
-      .filter(Boolean)
-      .join(' ');
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
-      // получаем клиента
+      // 1. Получаем клиента
       const [{ result: client }] = await chrome.scripting.executeScript({
-        target: { tabId: (await chrome.tabs.query({ active: true, currentWindow: true }))[0].id },
+        target: { tabId: (await chrome.tabs.query({ active:true, currentWindow:true }))[0].id },
         func: extractClient
       });
 
-      const [phrases, rules, products] = await Promise.all([
+      // 2. Загружаем данные
+      const [phrases, rules, productsRaw] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
         loadJSON('products.json')
       ]);
 
-      const container = document.getElementById('scriptsContainer');
-      container.innerHTML = '';
+      // 3. Подготовим продукты: только наши три из products.json
+      const products = productsRaw;
 
-      // отбираем и сортируем правила, оставляем только те, что есть в aliases
-      const matched = Object.entries(rules)
-        .filter(([,r]) => PRODUCT_ALIASES[r.target_product])
-        .sort(([,a],[,b]) => a.priority - b.priority)
-        .filter(([,r]) => matchesRule(r, client));
+      // 4. Фильтруем правила и сопоставляем продукт
+      const matched = Object.values(rules)
+        .map(rule => {
+          const key = TARGET_PRODUCT_MAP[rule.target_product];
+          if (!key || !products[key]) return null;
+          return { rule, prodKey: key };
+        })
+        .filter(Boolean)
+        .filter(({ rule }) => matchesRule(rule.trigger, client))
+        .sort((a, b) => a.rule.priority - b.rule.priority);
 
-      if (matched.length === 0 && rules.default && PRODUCT_ALIASES[rules.default.target_product]) {
-        matched.push(['default', rules.default]);
+      // 5. Если нет совпадений — пробуем default
+      if (matched.length === 0 && rules.default) {
+        const def = rules.default;
+        const key = TARGET_PRODUCT_MAP[def.target_product];
+        if (key && products[key]) matched.push({ rule: def, prodKey: key });
       }
 
-      // для каждого правила генерируем карточку
-      matched.forEach(([ruleKey, rule], idx) => {
-        const [prodKey, humanName] = PRODUCT_ALIASES[rule.target_product];
-        const product = products[prodKey];
+      // 6. Рендерим скрипты
+      const container = document.getElementById('scriptsContainer');
+      container.innerHTML = '';
+      let idx = 1;
+      matched.forEach(({ rule, prodKey }) => {
+        const prod = products[prodKey];
+        const title = PRODUCT_TITLES[prodKey] || prodKey;
+        const prelim = formatConditions(prod);
 
-        const prelim = formatConditions(product);
-        const scriptText = buildScript(phrases, product, client, rule);
+        // готовим значения для плейсхолдеров
+        const vals = {
+          fullName: client.fullName,
+          firstName: client.firstName,
+          patronymic: client.patronymic,
+          credit_remaining_months: client.credit_remaining_months,
+          rate: prod.Ставка != null ? `${prod.Ставка}%` : '—%',
+          term: prod.Срок   != null ? `${prod.Срок} мес.` : '— мес.'
+        };
+
+        // собираем скрипт
+        const lines = rule.phrase_blocks.map(block => {
+          const arr = phrases[block === 'intro' ? 'greeting' : block] || [];
+          return fillPlaceholders(pick(arr), vals);
+        }).filter(t => t);
+
+        const scriptText = lines
+          .map(s => s.trim())
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .replace(/^\w/, c => c.toUpperCase());
 
         const card = document.createElement('div');
         card.className = 'script-card';
         card.innerHTML = `
-          <strong>Скрипт #${idx + 1}: ${humanName}</strong>
+          <strong>Скрипт #${idx++}: ${title}</strong>
           <p>${prelim} ${scriptText}</p>
         `;
         container.appendChild(card);
       });
-    } catch (err) {
-      console.error(err);
-      alert('Ошибка генерации скриптов: ' + err.message);
+    } catch (e) {
+      console.error(e);
+      alert('Ошибка генерации скриптов: ' + e.message);
     }
   });
 })();
