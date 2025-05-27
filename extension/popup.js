@@ -1,5 +1,5 @@
 // popup.js
-// Данные подгружаются из публичного репозитория:
+// Данные подгружаются из репозитория:
 // https://github.com/Wooinpoorin/sovcombank-scripts/tree/main/data/
 
 (async () => {
@@ -11,20 +11,20 @@
     return res.json();
   }
 
-  // Считываем данные из cl2.html — ФИО, имя, отчество, MCC, кредиты
+  // Считывание ФИО, MCC, кредитов из cl2.html
   function extractClient() {
-    // ФИО
+    // ФИО, имя, отчество
     const fioEl = document.getElementById('fio');
     const fullName = fioEl ? fioEl.textContent.trim() : '';
     const parts = fullName.split(/\s+/);
     const firstName = parts[1] || '';
     const patronymic = parts[2] || '';
 
-    // Категория клиента (например, VIP если есть слово "VIP" в ФИО)
+    // Категория клиента (напр. VIP если есть "VIP" в ФИО)
     let category = '';
     if (/VIP/i.test(fullName)) category = 'VIP';
 
-    // Месяцы до конца кредита (по минимальному сроку любого кредита)
+    // Месяцы до конца кредита (по минимальному сроку)
     let credit_remaining_months = 0;
     const creditsTable = document.querySelector('#credits-table tbody');
     if (creditsTable && creditsTable.rows.length) {
@@ -42,13 +42,13 @@
       credit_remaining_months = minMonths !== Infinity ? minMonths : 0;
     }
 
-    // Список операций (MCC-коды)
+    // Все уникальные MCC (только числа)
     const opsTable = document.getElementById('ops-table');
     const operations = [];
     if (opsTable) {
       for (const row of opsTable.rows) {
         const mcc = Number(row.cells[4]?.textContent.trim());
-        if (mcc) operations.push(mcc);
+        if (mcc && !operations.includes(mcc)) operations.push(mcc);
       }
     }
 
@@ -62,7 +62,7 @@
     };
   }
 
-  // Проверка совпадения клиента с триггером правила
+  // Логика совпадения правила и клиента
   function matchesRule(trigger, client) {
     if (Array.isArray(trigger.mcc_codes) && trigger.mcc_codes.length) {
       const count = client.operations.filter(mcc => trigger.mcc_codes.includes(mcc)).length;
@@ -70,9 +70,16 @@
     }
     if (trigger.client_category && client.category === trigger.client_category) return true;
     if (trigger.credit_remaining_months != null && client.credit_remaining_months <= trigger.credit_remaining_months) return true;
+    // Если нет триггеров, подходит всем (например, default)
+    if (
+      (!trigger.mcc_codes || !trigger.mcc_codes.length) &&
+      !trigger.client_category &&
+      trigger.credit_remaining_months == null
+    ) return true;
     return false;
   }
 
+  // Привязки для отображения
   const TARGET_PRODUCT_MAP = {
     premium_loan:            'prime_plus',
     car_loan:                'car_pledge_loan',
@@ -119,7 +126,7 @@
     });
   }
 
-  // Случайный выбор из массива с исключением ранее использованных (для разнообразия)
+  // Случайный выбор из массива с исключением использованных
   function pick(arr, used = []) {
     const filtered = arr.filter(e => !used.includes(e));
     if (filtered.length === 0) return arr[Math.floor(Math.random() * arr.length)] || '';
@@ -144,69 +151,75 @@
         loadJSON('products.json')
       ]);
 
+      // --- Отладка: выводим MCC-коды клиента и сработавшие правила ---
+      console.log("MCC клиента:", client.operations);
+
       const allProductKeys = ['prime_plus', 'car_pledge_loan', 'real_estate_pledge_loan'];
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
       let idx = 1;
 
+      // Для каждого продукта собираем все совпавшие правила (и дефолт если нужно)
       for (const prodKey of allProductKeys) {
-        // Ищем подходящие правила для этого продукта
-        const prodRules = Object.values(rules)
+        const matchedRules = Object.values(rules)
           .filter(rule => {
             const mapKey = TARGET_PRODUCT_MAP[rule.target_product];
             return mapKey === prodKey && matchesRule(rule.trigger, client);
           })
           .sort((a, b) => a.priority - b.priority);
 
-        // Если ничего не нашли — выводим дефолт для этого продукта
-        let usedRule = null;
-        if (prodRules.length) {
-          usedRule = prodRules[0];
-        } else {
-          // Ищем дефолт, привязываем к этому продукту
-          usedRule = {
+        // Отладка: какие rules сработали для этого продукта?
+        console.log(`Для продукта ${PRODUCT_TITLES[prodKey]} найдены правила:`,
+          matchedRules.map(r => r && r.phrase_blocks && r.phrase_blocks.join(', ')));
+
+        // Если ни одного не нашли — добавим дефолт
+        if (!matchedRules.length && rules.default) {
+          matchedRules.push({
             ...rules.default,
             target_product: Object.keys(TARGET_PRODUCT_MAP).find(key => TARGET_PRODUCT_MAP[key] === prodKey) || 'prime_plus'
-          };
+          });
         }
 
-        const prod = products[prodKey];
-        const title = PRODUCT_TITLES[prodKey] || prodKey;
-        const prelim = formatConditions(prod);
+        // Для каждого сработавшего правила генерируем 2 шаблона (можно больше/меньше)
+        for (const rule of matchedRules) {
+          const prod = products[prodKey];
+          const title = PRODUCT_TITLES[prodKey] || prodKey;
+          const prelim = formatConditions(prod);
 
-        const { rateStr, termStr } = getProductRateTerm(prod);
+          const { rateStr, termStr } = getProductRateTerm(prod);
 
-        const vals = {
-          fullName: client.fullName,
-          firstName: client.firstName,
-          patronymic: client.patronymic,
-          credit_remaining_months: client.credit_remaining_months,
-          rate: rateStr,
-          term: termStr
-        };
+          const vals = {
+            fullName: client.fullName,
+            firstName: client.firstName,
+            patronymic: client.patronymic,
+            credit_remaining_months: client.credit_remaining_months,
+            rate: rateStr,
+            term: termStr
+          };
 
-        // Два шаблона для каждого продукта
-        const usedBlocks = {};
-        for (let v = 0; v < 2; v++) {
-          const lines = usedRule.phrase_blocks.map(block => {
-            const key = block === 'intro' ? 'greeting' : block;
-            const arr = phrases[key] || [];
-            if (!usedBlocks[key]) usedBlocks[key] = [];
-            const phrase = fillPlaceholders(pick(arr, usedBlocks[key]), vals);
-            usedBlocks[key].push(phrase);
-            return phrase;
-          }).filter(Boolean);
+          // Выводим два уникальных варианта скрипта для каждого rules+продукт
+          const usedBlocks = {};
+          for (let v = 0; v < 2; v++) {
+            const lines = rule.phrase_blocks.map(block => {
+              const key = block === 'intro' ? 'greeting' : block;
+              const arr = phrases[key] || [];
+              if (!usedBlocks[key]) usedBlocks[key] = [];
+              const phrase = fillPlaceholders(pick(arr, usedBlocks[key]), vals);
+              usedBlocks[key].push(phrase);
+              return phrase;
+            }).filter(Boolean);
 
-          let scriptText = lines.join(' ');
-          if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
+            let scriptText = lines.join(' ');
+            if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
-          const card = document.createElement('div');
-          card.className = 'script-card';
-          card.innerHTML = `
-            <strong>Скрипт #${idx++}: ${title}</strong>
-            <p>${prelim} ${scriptText}</p>
-          `;
-          container.appendChild(card);
+            const card = document.createElement('div');
+            card.className = 'script-card';
+            card.innerHTML = `
+              <strong>Скрипт #${idx++}: ${title}</strong>
+              <p>${prelim} ${scriptText}</p>
+            `;
+            container.appendChild(card);
+          }
         }
       }
     } catch (e) {
