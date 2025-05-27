@@ -16,21 +16,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException
 
-# Три целевых страницы с завершающим слэшем
 PAGES = {
     "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
     "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-/",
     "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa/"
 }
 
-# Селекторы: отдельный для "kredit-na-kartu", общий для остальных
-SELECTOR_KREDIT = "td.Tariffs-module--tableDataDescr--KbfG1.Tariffs-module--seoRedesign--OwzVi"
-SELECTOR_COMMON = "td.max-w-xs.font-semibold.sm\\:max-w-none.lg\\:text-lg[data-type='value']"
+SELECTOR_KREDIT = r"td.Tariffs-module--tableDataDescr--KbfG1"
+SELECTOR_COMMON = r"td[data-type='value']"
 
 def create_driver():
     opts = Options()
-    opts.add_argument("--headless=new")
+    opts.add_argument("--headless")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
@@ -43,42 +42,42 @@ def extract_rate_term(driver, url):
     driver.get(url)
     wait = WebDriverWait(driver, 20)
     wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-    time.sleep(1)
+    time.sleep(2)
 
-    # Выбираем селектор
-    if "kredit-na-kartu" in url:
-        sel = SELECTOR_KREDIT
-    else:
-        sel = SELECTOR_COMMON
-
-    # Ждём именно тех ячеек, что нужны
-    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, sel)))
-    elems = driver.find_elements(By.CSS_SELECTOR, sel)
-    texts = [e.text.replace("\u00A0"," ").strip() for e in elems if e.text.strip()]
+    # сначала пробуем «родной» селектор
+    sel = SELECTOR_KREDIT if "kredit-na-kartu" in url else SELECTOR_COMMON
+    try:
+        wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, sel)))
+        elems = driver.find_elements(By.CSS_SELECTOR, sel)
+        texts = [e.text.replace("\u00A0", " ").strip() for e in elems if e.text.strip()]
+    except TimeoutException:
+        # если ничего не нашли за 20 секунд — уходим в full-text
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+        texts = [line.strip() for line in body_text.splitlines() if line.strip()]
 
     rates = []
     terms = []
 
-    # Ставки
+    # собираем все процентные ставки
     for t in texts:
-        if "%" in t:
-            for num in re.findall(r"[\d\.,]+", t):
-                try:
-                    rates.append(float(num.replace(",", ".")))
-                except:
-                    pass
+        for num in re.findall(r"([\d\.,]+)\s*%", t):
+            try:
+                rates.append(float(num.replace(",", ".")))
+            except ValueError:
+                continue
 
-    # Сроки
+    # ищем упоминания «до N лет/год/мес/дн»
     for t in texts:
-        m = re.search(r"до\s*(\d+)", t)
+        m = re.search(r"до\s*(\d+)\s*(лет|год|мес|дн)", t, flags=re.IGNORECASE)
         if m:
             n = int(m.group(1))
-            if re.search(r"лет|год", t):
+            unit = m.group(2).lower()
+            if unit in ("лет", "год"):
                 terms.append(n * 12)
-            elif "дн" in t:
-                terms.append(max(1, n // 30))
-            else:
+            elif unit == "мес":
                 terms.append(n)
+            elif unit == "дн":
+                terms.append(max(1, n // 30))
 
     return (min(rates) if rates else None, max(terms) if terms else 0)
 
@@ -94,16 +93,15 @@ def main():
             print(f"\n❗ Ошибка при парсинге «{key}» ({url}):", file=sys.stderr)
             traceback.print_exc()
             rate, term = None, 0
-        results[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
+        results[key] = {"Ставка (%)": rate, "Срок (мес.)": term, "Обновлено": ts}
 
     driver.quit()
 
     os.makedirs("data", exist_ok=True)
-    with open("data/products.json","w",encoding="utf-8") as f:
+    with open("data/products.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
