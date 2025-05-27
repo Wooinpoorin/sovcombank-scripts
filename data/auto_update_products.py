@@ -1,81 +1,98 @@
-import requests
-from bs4 import BeautifulSoup
+#!/usr/bin/env python3
+# data/auto_update_products.py
+
 import json
 import re
+import os
+from bs4 import BeautifulSoup
 from datetime import datetime
-import time
 
-HF_TOKEN = "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"  # <-- вставь свой токен
-LLM_API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-llm-7b-chat"  # или другую бесплатную LLM
+# Папка, где лежит этот скрипт (data/)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-HEADERS = {
-    "Authorization": f"Bearer {HF_TOKEN}",
-    "Content-Type": "application/json"
+# Папка с HTML-страницами
+HTML_DIR = os.path.join(SCRIPT_DIR, "html_pages")
+
+# Пути к HTML-файлам
+files = {
+    "prime_plus": os.path.join(HTML_DIR, "prime_plus.html"),
+    "car_pledge_loan": os.path.join(HTML_DIR, "car_pledge_loan.html"),
+    "real_estate_pledge_loan": os.path.join(HTML_DIR, "real_estate_pledge_loan.html"),
 }
 
-URLS = {
-    "car_pledge_loan": "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
-    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa"
-}
+def extract_max_term(soup):
+    """Ищет блок 'Срок кредита' и возвращает максимальный срок в месяцах."""
+    h2 = soup.find("h2", string=re.compile(r"Срок кредита"))
+    if not h2:
+        return 0
+    sec = h2.find_next_sibling(lambda tag: tag.name in ("p", "ul"))
+    if not sec:
+        return 0
+    nums = re.findall(r"\b(\d+)\b", sec.get_text())
+    months = [int(n) for n in nums]
+    return max(months) if months else 0
 
-def ask_llm(prompt):
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 256, "temperature": 0.1},
-        "options": {"wait_for_model": True}
-    }
-    response = requests.post(LLM_API_URL, headers=HEADERS, json=payload, timeout=60)
-    response.raise_for_status()
-    data = response.json()
-    # DeepSeek, Llama и другие возвращают [{'generated_text': "..."}]
-    if isinstance(data, list) and 'generated_text' in data[0]:
-        return data[0]['generated_text']
-    elif isinstance(data, dict) and "generated_text" in data:
-        return data["generated_text"]
-    else:
-        return str(data)
+def parse_page(key, path):
+    """Парсит одну страницу, возвращает (rate, term)."""
+    with open(path, encoding="utf-8") as f:
+        soup = BeautifulSoup(f, "html.parser")
 
-def extract_conditions(text):
-    prompt = (
-        "Прочитай этот текст с сайта банка. "
-        "Извлеки минимальную процентную ставку (если есть диапазон — возьми минимальную), и максимальный срок кредитования в месяцах. "
-        "Верни результат строго в формате JSON: {'Ставка': число, 'Срок': число}.\n"
-        "Текст:\n" + text
-    )
-    answer = ask_llm(prompt)
-    # Ищем JSON в ответе
-    match = re.search(r"\{[^\}]+\}", answer)
-    if match:
-        try:
-            data = json.loads(match.group(0).replace("'", '"'))
-            return data.get('Ставка'), data.get('Срок')
-        except Exception:
-            pass
-    return None, 0
+    term = extract_max_term(soup)
+    rate = None
+
+    if key == "prime_plus":
+        h2 = soup.find("h2", string=re.compile(r"Основная процентная ставка"))
+        if h2:
+            for p in h2.find_next_siblings("p"):
+                strong = p.find("strong")
+                text = strong.get_text() if strong else p.get_text()
+                m = re.search(r"([\d,\.]+)%", text)
+                if m:
+                    rate = float(m.group(1).replace(",", "."))
+                    break
+
+    elif key == "car_pledge_loan":
+        h2 = soup.find("h2", string=re.compile(r"Процентная ставка"))
+        if h2:
+            ul = h2.find_next_sibling("ul")
+            if ul:
+                vals = [
+                    float(m.group(1).replace(",", "."))
+                    for li in ul.find_all("li")
+                    for m in [re.search(r"([\d,\.]+)%", li.get_text())]
+                    if m
+                ]
+                if vals:
+                    rate = min(vals)
+
+    elif key == "real_estate_pledge_loan":
+        h2 = soup.find("h2", string=re.compile(r"Процентная ставка"))
+        if h2:
+            p = h2.find_next_sibling("p")
+            if p:
+                nums = re.findall(r"([\d,\.]+)", p.get_text())
+                nums = [float(x.replace(",", ".")) for x in nums]
+                if nums:
+                    rate = min(nums)
+
+    return rate, term
 
 def main():
-    products = {}
-    ts = datetime.utcnow().isoformat() + "Z"
-    for key, url in URLS.items():
-        print(f"Парсим {key} ({url}) ...")
-        resp = requests.get(url, timeout=30)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        # Берём основной текст (можно расширить селектор)
-        main_text = soup.get_text(separator="\n", strip=True)
-        # Режем чтобы не было слишком длинно (лимиты)
-        main_text = main_text[:3000]
-        try:
-            rate, term = extract_conditions(main_text)
-            print(f"  Ставка: {rate}, Срок: {term}")
-        except Exception as e:
-            print(f"❗ Ошибка при парсинге {key}: {e}")
-            rate, term = None, 0
-        products[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
-        time.sleep(6)  # не спамить API HuggingFace
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    data = {}
 
-    with open("data/products.json", "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
-    print("Выгружено в data/products.json")
+    for key, filepath in files.items():
+        rate, term = parse_page(key, filepath)
+        data[key] = {
+            "Ставка (%)": rate,
+            "Срок (мес.)": term,
+            "Обновлено": now_iso
+        }
+
+    # Путь до выходного JSON — data/products.json
+    out_path = os.path.join(SCRIPT_DIR, "products.json")
+    with open(out_path, "w", encoding="utf-8") as fw:
+        json.dump(data, fw, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     main()
