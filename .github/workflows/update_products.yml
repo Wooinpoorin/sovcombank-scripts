@@ -1,3 +1,4 @@
+# .github/workflows/update_products.yml
 name: Обновление products.json
 
 on:
@@ -18,20 +19,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Chrome & ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+          echo "CHROME_BIN=/usr/bin/chromium-browser" >> $GITHUB_ENV
+          echo "CHROMEDRIVER_PATH=/usr/bin/chromedriver" >> $GITHUB_ENV
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install deps
-        run: pip install requests beautifulsoup4
+      - name: Install dependencies
+        run: |
+          pip install selenium undetected-chromedriver beautifulsoup4
 
-      - name: Run parser
+      - name: Run parser & update products.json
         run: python data/auto_update_products.py
 
       - name: Commit & push if changed
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/products.json
           if git diff --cached --quiet; then
