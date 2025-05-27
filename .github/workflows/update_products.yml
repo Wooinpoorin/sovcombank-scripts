@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install beautifulsoup4 requests
+          pip install beautifulsoup4 requests selenium undetected-chromedriver
 
       - name: Clean HTML pages
         run: python data/clean_html_pages.py
@@ -43,7 +43,7 @@ jobs:
             git commit -m "chore: auto-update products.json [skip ci]"
           fi
 
-      - name: Push
+      - name: Push changes
         uses: ad-m/github-push-action@v0.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
