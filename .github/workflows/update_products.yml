@@ -1,3 +1,4 @@
+# .github/workflows/update_products.yml
 name: Обновление products.json
 
 on:
@@ -13,36 +14,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4
+      - run: pip install requests beautifulsoup4
 
-      - name: Run parser & update products.json
-        run: python data/auto_update_products.py
+      - run: python data/auto_update_products.py
 
-      - name: Commit changes if any
-        run: |
-          git config user.name  "github-actions[bot]"
+      - run: |
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/products.json
           if git diff --cached --quiet; then
             echo "No changes"
           else
             git commit -m "chore: auto-update products.json [skip ci]"
+            git push origin main
           fi
-
-      - name: Push changes
-        uses: ad-m/github-push-action@v0.6.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
