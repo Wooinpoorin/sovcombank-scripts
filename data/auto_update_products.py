@@ -1,105 +1,89 @@
-#!/usr/bin/env python3
-# data/auto_update_products.py
-
-import os
-import sys
+import requests
+import openai
 import json
-import re
 import time
-import traceback
-from datetime import datetime
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup
+# ==== КОНФИГ ====
+OPENAI_API_KEY = "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"  # <-- ВСТАВЬ СВОЙ КЛЮЧ OpenAI API
 
-# Три целевых страницы (со слэшем)
-PAGES = {
-    "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
-    "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-/",
-    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa/"
+URLS = {
+    "car_pledge_loan": "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
+    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa",
 }
 
-def create_driver():
-    opts = Options()
-    opts.add_argument("--headless=new")
-    opts.add_argument("--no-sandbox")
-    opts.add_argument("--disable-dev-shm-usage")
-    opts.add_argument("--disable-gpu")
-    opts.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
-    path = ChromeDriverManager().install()
-    service = Service(path)
-    return webdriver.Chrome(service=service, options=opts)
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept": "text/html,application/xhtml+xml,application/xml",
+    "Referer": "https://sovcombank.ru/"
+}
 
-def extract_rate_term(driver, url):
-    driver.get(url)
-    wait = WebDriverWait(driver, 15)
-    # Ждём, что JSON будет вставлен
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "script#__NEXT_DATA__")))
-    time.sleep(0.5)  # дать Next.js время
-
-    # Парсим page_source для __NEXT_DATA__
-    soup = BeautifulSoup(driver.page_source, "html.parser")
-    script = soup.find("script", id="__NEXT_DATA__")
-    if not script or not script.string:
-        return None, 0
-
-    data = json.loads(script.string)
-    tariffs = data.get("props", {}) \
-                   .get("pageProps", {}) \
-                   .get("tariffs", []) or []
-
-    rates = []
-    terms = []
-
-    for t in tariffs:
-        # ставки
-        for fld in ("minRate", "maxRate", "rate"):
-            v = t.get(fld)
-            if v is None: 
-                continue
-            for num in re.findall(r"[\d.,]+", str(v)):
-                try:
-                    rates.append(float(num.replace(",", ".")))
-                except:
-                    pass
-        # сроки (месяцы)
-        mn = t.get("minTermMonths")
-        mx = t.get("maxTermMonths")
-        if isinstance(mn, int):
-            terms.append(mn)
-        if isinstance(mx, int):
-            terms.append(mx)
-
-    return (min(rates) if rates else None, max(terms) if terms else 0)
+# ==== AI ПАРСИНГ ====
+def ai_parse_conditions(html, product_name):
+    system_prompt = (
+        "Ты профессиональный банковский бот. "
+        "Тебе даётся HTML страницы продукта Совкомбанка. "
+        "Найди минимальную и максимальную процентные ставки по кредиту, "
+        "минимальный и максимальный срок кредита (в месяцах или годах), "
+        "выдавай только JSON: {\"min_rate\": <float>, \"max_rate\": <float>, "
+        "\"min_term\": <int>, \"max_term\": <int>}.\n"
+        "Если есть только одно значение — оно и min, и max.\n"
+        "Если не нашёл что-то, укажи null."
+    )
+    prompt = f"""
+Вот HTML для продукта '{product_name}' (https://sovcombank.ru). 
+Найди значения, как указано выше, и выдай только JSON!
+HTML:
+<<<
+{html[:35000]}  # GPT-4o видит большой контекст, но если что — можно сократить.
+>>>
+"""
+    openai.api_key = OPENAI_API_KEY
+    response = openai.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.0,
+        max_tokens=500
+    )
+    # Достаём чистый JSON из ответа
+    text = response.choices[0].message.content
+    json_start = text.find('{')
+    json_end = text.rfind('}') + 1
+    try:
+        parsed = json.loads(text[json_start:json_end])
+    except Exception:
+        parsed = None
+    return parsed
 
 def main():
-    driver = create_driver()
     results = {}
-    ts = datetime.utcnow().isoformat() + "Z"
+    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
-    for key, url in PAGES.items():
+    for name, url in URLS.items():
+        print(f"Парсим {name} ({url}) ...")
         try:
-            rate, term = extract_rate_term(driver, url)
-        except Exception:
-            print(f"\n❗ Ошибка при парсинге «{key}» ({url}):", file=sys.stderr)
-            traceback.print_exc()
-            rate, term = None, 0
-        results[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
+            html = requests.get(url, headers=HEADERS, timeout=20).text
+            data = ai_parse_conditions(html, name)
+        except Exception as e:
+            print(f"❗ Ошибка при парсинге {name}: {e}")
+            data = None
+        # Формируем финальный словарь
+        results[name] = {
+            "Ставка мин": data["min_rate"] if data else None,
+            "Ставка макс": data["max_rate"] if data else None,
+            "Срок мин": data["min_term"] if data else None,
+            "Срок макс": data["max_term"] if data else None,
+            "Обновлено": now,
+        }
+        # OpenAI просит лимиты по токенам — если долго, делаем паузу между запросами
+        time.sleep(2)
 
-    driver.quit()
-
-    os.makedirs("data", exist_ok=True)
+    # === СОХРАНЕНИЕ В JSON ===
     with open("data/products.json", "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-
-    print(json.dumps(results, ensure_ascii=False, indent=2))
-
+    print("Выгружено в data/products.json")
 
 if __name__ == "__main__":
     main()
