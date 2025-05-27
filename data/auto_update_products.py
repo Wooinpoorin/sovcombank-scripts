@@ -2,7 +2,6 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from bs4 import BeautifulSoup
 import time
 import json
 import re
@@ -11,45 +10,55 @@ from datetime import datetime
 
 def extract_rate_term(driver, url):
     """
-    Загружает страницу по URL и извлекает минимальную процентную ставку и максимальный срок в месяцах.
-    Теперь берём все <td data-type="value"> и парсим из них и %-ставки, и сроки.
-    Возвращает кортеж (rate: float | None, term: int).
+    Загружает страницу, подгружает весь динамический контент,
+    берёт все <td data-type="value"> и из них парсит:
+     - минимальную процентную ставку
+     - максимальный срок в месяцах
     """
     driver.get(url)
+    # ждём, пока появится тело страницы
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-    time.sleep(1)  # даём JS подгрузиться
 
-    html = driver.page_source
-    soup = BeautifulSoup(html, 'html.parser')
+    # скроллим вниз/вверх, чтобы подгрузились ленивые элементы
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(0.5)
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(0.5)
+
+    # ждём, пока появятся элементы с data-type="value"
+    WebDriverWait(driver, 15).until(
+        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td[data-type='value']"))
+    )
 
     rates = []
     terms = []
 
-    # перебираем все ячейки, где лежат и ставки, и сроки
-    for td in soup.find_all('td', attrs={'data-type': 'value'}):
-        text = td.get_text(strip=True).replace('\u00A0', ' ')
+    # берём текст всех ячеек
+    tds = driver.find_elements(By.CSS_SELECTOR, "td[data-type='value']")
+    for td in tds:
+        text = td.text.replace('\u00A0', ' ').strip()
+        if not text:
+            continue
 
         # 1) процентная ставка
         if '%' in text:
-            nums = re.findall(r'[\d\.,]+', text)
-            floats = [float(n.replace(',', '.')) for n in nums]
-            rates.extend(floats)
+            for num in re.findall(r'[\d\.,]+', text):
+                try:
+                    rates.append(float(num.replace(',', '.')))
+                except:
+                    continue
 
-        # 2) срок — ищем «до N <единица>»
-        m = re.search(
-            r'до\s*(\d+)\s*(дн[ея]?|мес(?:\.|яц[ея]в?)?|лет|год[ау]?)',
-            text, flags=re.IGNORECASE
-        )
-        if m:
-            n = int(m.group(1))
-            unit = m.group(2).lower()
-            if 'дн' in unit:
-                months = max(1, n // 30)
-            elif 'лет' in unit or 'год' in unit:
-                months = n * 12
-            else:
-                months = n
-            terms.append(months)
+        # 2) срок (берём последнюю цифру для максимума)
+        if 'до' in text:
+            nums = re.findall(r'(\d+)', text)
+            if nums:
+                n = int(nums[-1])
+                if 'год' in text or 'лет' in text:
+                    terms.append(n * 12)
+                elif 'мес' in text:
+                    terms.append(n)
+                elif 'дн' in text:
+                    terms.append(max(1, n // 30))
 
     rate = min(rates) if rates else None
     term = max(terms) if terms else 0
@@ -57,7 +66,6 @@ def extract_rate_term(driver, url):
 
 
 def update_products_json(products, filepath):
-    """Записывает словарь products в JSON-файл по указанному пути."""
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(products, f, ensure_ascii=False, indent=2)
 
