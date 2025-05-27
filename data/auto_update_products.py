@@ -1,95 +1,112 @@
 #!/usr/bin/env python3
-# data/auto_update_products.py
-
-import requests
+import os
 import json
+import sys                  # <-- добавлено
 import re
+import time
 from datetime import datetime
-from bs4 import BeautifulSoup
 
-# Три ваших URL (без лишних слэшей!)
-URLS = {
-    "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-на-кartu/",
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# Три целевых страницы
+PAGES = {
+    "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
     "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
     "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa"
 }
 
-# Заголовки для имитации браузера
-HEADERS = {
-    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ru-RU,ru;q=0.8",
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Referer":         "https://sovcombank.ru/",
-    "Connection":      "keep-alive"
-}
+# Селекторы из ваших парсеров
+SEL_KREDIT = "td.Tariffs-module--tableDataDescr--KbfG1.Tariffs-module--seoRedesign--OwzVi"
+SEL_COMMON = "td.max-w-xs.font-semibold.sm\\:max-w-none.lg\\:text-lg[data-type='value']"
 
-session = requests.Session()
-session.headers.update(HEADERS)
+def create_driver():
+    """Создаёт headless Selenium ChromeDriver на CI без патчей."""
+    chrome_bin = "/usr/bin/chromium-browser"
+    driver_bin = "/usr/bin/chromedriver"
+    opts = Options()
+    opts.binary_location = chrome_bin
+    opts.add_argument("--headless")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    # Отключаем картинки для скорости
+    opts.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
+    svc = Service(driver_bin)
+    return webdriver.Chrome(service=svc, options=opts)
 
-def extract_rate_term(url: str) -> tuple[float|None,int]:
-    """
-    1) Инициализация с куками через главную
-    2) GET целевой URL
-    3) Получение JSON из <script id="__NEXT_DATA__">
-    4) Из props.pageProps.tariffs — minRate/maxRate → минимальная ставка;
-       minTermMonths/maxTermMonths → максимальный срок.
-    """
-    # 1) Для куки
-    session.get("https://sovcombank.ru/", timeout=15).raise_for_status()
-    # 2) Целевая страница
-    resp = session.get(url, timeout=15)
-    resp.raise_for_status()
+def extract_rate_term(driver, url):
+    driver.get(url)
+    wait = WebDriverWait(driver, 15)
+    # ждём тело
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    time.sleep(1)
 
-    # 3) Ищем JSON
-    soup = BeautifulSoup(resp.text, "html.parser")
-    tag = soup.find("script", id="__NEXT_DATA__")
-    if not tag or not tag.string:
-        return None, 0
+    # выбираем правильный селектор
+    sel = SEL_KREDIT if "kredit-na-kartu" in url else SEL_COMMON
+    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, sel)))
 
-    data = json.loads(tag.string)
-    tariffs = (data.get("props", {})
-                   .get("pageProps", {})
-                   .get("tariffs", []))
+    # прокрутка для ленивых элементов
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(0.5)
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(0.5)
 
-    rates, terms = [], []
+    elems = driver.find_elements(By.CSS_SELECTOR, sel)
+    texts = [e.text.replace("\u00A0", " ").strip() for e in elems if e.text.strip()]
 
-    for t in tariffs:
-        # Ставки
-        for fld in ("minRate", "maxRate", "rate"):
-            v = t.get(fld)
-            if v is None: 
-                continue
-            for num in re.findall(r"[\d.,]+", str(v)):
+    rates = []
+    terms = []
+
+    # минимальная ставка
+    for t in texts:
+        if "%" in t:
+            for num in re.findall(r"[\d\.,]+", t):
                 try:
                     rates.append(float(num.replace(",", ".")))
                 except:
                     pass
 
-        # Сроки
-        mn = t.get("minTermMonths")
-        mx = t.get("maxTermMonths")
-        if isinstance(mn, int):
-            terms.append(mn)
-        if isinstance(mx, int):
-            terms.append(mx)
+    # максимальный срок
+    for t in texts:
+        # годы → месяцы
+        for m in re.findall(r"(\d+)\s*(лет|год[ау]?)", t, flags=re.IGNORECASE):
+            terms.append(int(m[0])*12)
+        # месяцы
+        for m in re.findall(r"(\d+)\s*(мес(?:\.|яц[ея]в?)?)", t, flags=re.IGNORECASE):
+            terms.append(int(m[0]))
+        # дни → месяцы
+        for m in re.findall(r"(\d+)\s*дн[ея]?", t, flags=re.IGNORECASE):
+            days = int(m[0]); terms.append(max(1, days//30))
 
-    return (
-        min(rates) if rates else None,
-        max(terms) if terms else 0
-    )
+    return (min(rates) if rates else None, max(terms) if terms else 0)
+
 
 def main():
-    products = {}
-    ts = datetime.utcnow().isoformat() + "Z"
+    driver = create_driver()
+    results = {}
+    now = datetime.utcnow().isoformat() + "Z"
 
-    for key, url in URLS.items():
-        rate, term = extract_rate_term(url)
-        products[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
+    for key, url in PAGES.items():
+        try:
+            rate, term = extract_rate_term(driver, url)
+        except Exception as e:
+            print(f"Error parsing {key}: {e}", file=sys.stderr)
+            rate, term = None, 0
+        results[key] = {"Ставка": rate, "Срок": term, "Обновлено": now}
 
-    with open("data/products.json", "w", encoding="utf-8") as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
+    driver.quit()
 
-    print(json.dumps(products, ensure_ascii=False, indent=2))
+    os.makedirs("data", exist_ok=True)
+    out = "data/products.json"
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+
 
 if __name__ == "__main__":
     main()
