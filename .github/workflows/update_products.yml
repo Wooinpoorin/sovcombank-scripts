@@ -10,34 +10,39 @@ permissions:
   contents: write
 
 jobs:
-  update-products:
+  update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Install Chromium & chromedriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
-        run: pip install requests beautifulsoup4
+      - name: Install deps
+        run: pip install selenium beautifulsoup4
 
-      - name: Run parser & update products.json
+      - name: Run parser
         run: python data/auto_update_products.py
 
-      - name: Commit & push if changed
+      - name: Commit & Push
         run: |
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/products.json
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "chore: auto-update products.json [skip ci]"
+            git commit -m "chore: auto-update products.json via Selenium CI"
             git push origin main
           fi
