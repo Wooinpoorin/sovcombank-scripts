@@ -1,8 +1,11 @@
 # .github/workflows/update-products.yml
 name: Авто-обновление продуктовых данных
 
+# Даём workflow права на записи кода
+permissions:
+  contents: write
+
 on:
-  # Раз в сутки и по ручному запуску
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
@@ -15,6 +18,7 @@ jobs:
       - name: Checkout репозитория
         uses: actions/checkout@v3
         with:
+          # сохраняем креды, чтобы пушить обратно
           persist-credentials: true
 
       - name: Настроить Python
@@ -30,7 +34,7 @@ jobs:
       - name: Запустить парсер
         run: python data/auto_update_products.py
 
-      - name: Закоммитить и запушить обновлённый products.json
+      - name: Закоммитить и запушить updates
         uses: EndBug/add-and-commit@v9
         with:
           author_name: github-actions[bot]
