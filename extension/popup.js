@@ -34,10 +34,6 @@
     return false;
   }
 
-  function pick(arr) {
-    return arr[Math.floor(Math.random() * arr.length)] || '';
-  }
-
   const TARGET_PRODUCT_MAP = {
     premium_loan:            'prime_plus',
     car_loan:                'car_pledge_loan',
@@ -52,7 +48,6 @@
 
   function formatConditions(prod) {
     const parts = [];
-
     // Ставка: диапазон мин–макс
     const minRate = prod["Ставка мин"], maxRate = prod["Ставка макс"];
     const rateStr = (minRate != null && maxRate != null)
@@ -82,6 +77,13 @@
       }
       return _;
     });
+  }
+
+  // Функция для декартова произведения всех массивов вариантов фраз
+  function cartesian(arrays) {
+    if (!arrays.length) return [];
+    return arrays.reduce((acc, curr) =>
+      acc.flatMap(a => curr.map(b => a.concat([b]))), [[]]);
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
@@ -124,7 +126,6 @@
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
-      const VARIANTS_PER_RULE = 3;
       let idx = 1;
 
       matched.forEach(({ rule, prodKey }) => {
@@ -152,13 +153,17 @@
           term: termVal
         };
 
-        for (let v = 0; v < VARIANTS_PER_RULE; v++) {
-          const lines = rule.phrase_blocks.map(block => {
-            const key = block === 'intro' ? 'greeting' : block;
-            return fillPlaceholders(pick(phrases[key] || []), vals);
-          }).filter(Boolean);
+        // Массивы всех вариантов для каждого блока
+        const allPhraseVariants = rule.phrase_blocks.map(block => {
+          const key = block === 'intro' ? 'greeting' : block;
+          return (phrases[key] || []).map(phrase => fillPlaceholders(phrase, vals)).filter(Boolean);
+        });
 
-          let scriptText = lines.join(' ');
+        // Декартово произведение (все комбинации)
+        const combos = cartesian(allPhraseVariants);
+
+        combos.forEach(combo => {
+          let scriptText = combo.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
           const card = document.createElement('div');
@@ -168,7 +173,7 @@
             <p>${prelim} ${scriptText}</p>
           `;
           container.appendChild(card);
-        }
+        });
       });
 
     } catch (e) {
