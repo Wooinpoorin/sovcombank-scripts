@@ -52,9 +52,21 @@
 
   function formatConditions(prod) {
     const parts = [];
-    const rate = prod?.Ставка != null ? `${prod.Ставка}%` : '—%';
-    parts.push(`ставка ${rate}`);
-    if (prod?.Срок) parts.push(`срок ${prod.Срок} мес.`);
+
+    // Ставка: диапазон мин–макс
+    const minRate = prod["Ставка мин"], maxRate = prod["Ставка макс"];
+    const rateStr = (minRate != null && maxRate != null)
+      ? (minRate === maxRate ? `${minRate}%` : `${minRate}%–${maxRate}%`)
+      : '—%';
+    parts.push(`ставка ${rateStr}`);
+
+    // Срок: диапазон мин–макс
+    const minTerm = prod["Срок мин"], maxTerm = prod["Срок макс"];
+    if (minTerm != null && maxTerm != null) {
+      const termStr = (minTerm === maxTerm ? `${minTerm}` : `${minTerm}–${maxTerm}`);
+      parts.push(`срок ${termStr} мес.`);
+    }
+
     return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
@@ -120,13 +132,24 @@
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
 
+        // Подготовка значений для заполнения шаблонов
+        const minRate2 = prod["Ставка мин"], maxRate2 = prod["Ставка макс"];
+        const rateVal = (minRate2 != null && maxRate2 != null)
+          ? (minRate2 === maxRate2 ? `${minRate2}%` : `${minRate2}%–${maxRate2}%`)
+          : '—%';
+
+        const minTerm2 = prod["Срок мин"], maxTerm2 = prod["Срок макс"];
+        const termVal = (minTerm2 != null && maxTerm2 != null)
+          ? (minTerm2 === maxTerm2 ? `${minTerm2} мес.` : `${minTerm2}–${maxTerm2} мес.`)
+          : '— мес.';
+
         const vals = {
           fullName: client.fullName,
           firstName: client.firstName,
           patronymic: client.patronymic,
           credit_remaining_months: client.credit_remaining_months,
-          rate: prod.Ставка != null ? `${prod.Ставка}%` : '—%',
-          term: prod.Срок != null ? `${prod.Срок} мес.` : '— мес.'
+          rate: rateVal,
+          term: termVal
         };
 
         for (let v = 0; v < VARIANTS_PER_RULE; v++) {
@@ -138,7 +161,7 @@
           let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
-          // рендерим карточку без лишней запятой
+          // Рендерим карточку
           const card = document.createElement('div');
           card.className = 'script-card';
           card.innerHTML = `
