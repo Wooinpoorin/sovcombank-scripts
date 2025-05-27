@@ -20,7 +20,7 @@
     const firstName = parts[1] || '';
     const patronymic = parts[2] || '';
 
-    // Категория клиента (напр. VIP если есть слово "VIP" в ФИО, можно заменить логику)
+    // Категория клиента (например, VIP если есть слово "VIP" в ФИО)
     let category = '';
     if (/VIP/i.test(fullName)) category = 'VIP';
 
@@ -144,12 +144,13 @@
         loadJSON('products.json')
       ]);
 
-      // Собираем правила по каждому продукту (не только по одному совпавшему!)
       const allProductKeys = ['prime_plus', 'car_pledge_loan', 'real_estate_pledge_loan'];
+      const container = document.getElementById('scriptsContainer');
+      container.innerHTML = '';
+      let idx = 1;
 
-      // Для каждого продукта собираем подходящие правила
-      let offers = [];
       for (const prodKey of allProductKeys) {
+        // Ищем подходящие правила для этого продукта
         const prodRules = Object.values(rules)
           .filter(rule => {
             const mapKey = TARGET_PRODUCT_MAP[rule.target_product];
@@ -157,32 +158,18 @@
           })
           .sort((a, b) => a.priority - b.priority);
 
-        // Если не нашлось по этому продукту, подставляем дефолтное правило если оно на него
-        if (!prodRules.length && rules.default) {
-          const mapKey = TARGET_PRODUCT_MAP[rules.default.target_product];
-          if (mapKey === prodKey) prodRules.push(rules.default);
+        // Если ничего не нашли — выводим дефолт для этого продукта
+        let usedRule = null;
+        if (prodRules.length) {
+          usedRule = prodRules[0];
+        } else {
+          // Ищем дефолт, привязываем к этому продукту
+          usedRule = {
+            ...rules.default,
+            target_product: Object.keys(TARGET_PRODUCT_MAP).find(key => TARGET_PRODUCT_MAP[key] === prodKey) || 'prime_plus'
+          };
         }
-        // Добавляем
-        for (const rule of prodRules) {
-          offers.push({ rule, prodKey });
-        }
-      }
 
-      // Если совсем ничего не нашлось (нет дефолта под продукты), добавим по одному дефолтному предложению на продукт
-      if (!offers.length && rules.default) {
-        for (const prodKey of allProductKeys) {
-          const mapKey = TARGET_PRODUCT_MAP[rules.default.target_product];
-          if (mapKey === prodKey) offers.push({ rule: rules.default, prodKey });
-        }
-      }
-
-      // Ограничим 1-2 шаблона на продукт для наглядности, но покажем по каждому продукту!
-      const container = document.getElementById('scriptsContainer');
-      container.innerHTML = '';
-
-      let idx = 1;
-
-      for (const { rule, prodKey } of offers) {
         const prod = products[prodKey];
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
@@ -198,10 +185,10 @@
           term: termStr
         };
 
-        // Сгенерируем по 1-2 скрипта для каждого оффера для разнообразия
+        // Два шаблона для каждого продукта
         const usedBlocks = {};
         for (let v = 0; v < 2; v++) {
-          const lines = rule.phrase_blocks.map(block => {
+          const lines = usedRule.phrase_blocks.map(block => {
             const key = block === 'intro' ? 'greeting' : block;
             const arr = phrases[key] || [];
             if (!usedBlocks[key]) usedBlocks[key] = [];
@@ -222,7 +209,6 @@
           container.appendChild(card);
         }
       }
-
     } catch (e) {
       console.error(e);
       alert('Ошибка генерации скриптов: ' + e.message);
