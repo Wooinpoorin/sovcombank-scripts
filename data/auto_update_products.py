@@ -1,103 +1,109 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import os
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
 import json
 import re
 from datetime import datetime
-from bs4 import BeautifulSoup
 
-# Папка с вашими свежесохранёнными HTML
-HTML_DIR    = "data/html_pages"
-OUTPUT_PATH = os.getenv("OUTPUT_PATH", "data/products.json")
 
-def parse_html_file(path: str) -> dict:
+def extract_rate_term(driver, url):
     """
-    Парсит один HTML-файл и возвращает:
-      - Ставку (первое упоминание % в разделе «Процентная ставка»)
-      - Срок (максимальное число месяцев в разделе «Срок кредита»)
+    Загружает страницу по URL и извлекает минимальную процентную ставку и максимальный срок в месяцах.
+    Возвращает кортеж (rate: float | None, term: int).
     """
-    with open(path, encoding="utf-8") as f:
-        soup = BeautifulSoup(f, "html.parser")
+    driver.get(url)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+    time.sleep(1)
 
-    # Убираем стили и скрипты, чтобы не мешались
-    for tag in soup(["style", "script"]):
-        tag.decompose()
+    # Для страницы 'kredit-na-kartu' селектор отличается
+    if "kredit-na-kartu" in url:
+        tds = driver.find_elements(
+            By.CSS_SELECTOR,
+            "td.Tariffs-module--tableDataDescr--KbfG1.Tariffs-module--seoRedesign--OwzVi"
+        )
+    else:
+        # Селектор для остальных двух страниц
+        tds = driver.find_elements(
+            By.CSS_SELECTOR,
+            "td.max-w-xs.font-semibold.sm\\:max-w-none.lg\\:text-lg[data-type='value']"
+        )
 
-    # Общий текст секций
-    sections = {sec.find("h2").get_text(strip=True).lower(): sec
-                for sec in soup.select("div.section")
-                if sec.find("h2")}
+    texts = [td.text.strip() for td in tds]
 
-    # 1) Ставка
+    # Процентная ставка — первый текст, содержащий '%'
+    rate_text = next((t for t in texts if '%' in t), None)
+    # Срок — остальные поля без '%'
+    term_texts = [t for t in texts if '%' not in t]
+
+    # Извлечение и парсинг чисел для ставки
     rate = None
-    for title in sections:
-        if "процентная ставка" in title:
-            text = sections[title].get_text(" ", strip=True)
-            all_rates = re.findall(r"([0-9]+(?:[.,][0-9]+)?)\s*%", text)
-            if all_rates:
-                # Берём первое (базовую) ставку
-                rate = float(all_rates[0].replace(",", "."))
-            break
+    if rate_text:
+        rate_nums = re.findall(r"[\d.,]+", rate_text)
+        rate_floats = [float(num.replace(',', '.')) for num in rate_nums]
+        if rate_floats:
+            rate = min(rate_floats)
 
-    # fallback — если раздел не распознался, ищем везде
-    if rate is None:
-        m = re.search(r"(?:от\s*)?([0-9]+(?:[.,][0-9]+)?)\s*%", soup.get_text(" ", strip=True))
-        rate = float(m.group(1).replace(",", ".")) if m else 0.0
+    # Извлечение и парсинг сроков (берем максимальный), конвертируем годы в месяцы
+    term = 0
+    for txt in term_texts:
+        nums = re.findall(r"\d+", txt)
+        ints = [int(n) for n in nums]
+        if not ints:
+            continue
+        max_int = max(ints)
+        if 'год' in txt or 'лет' in txt:
+            months = max_int * 12
+        else:
+            months = max_int
+        term = max(term, months)
 
-    # 2) Срок
-    term = None
-    for title in sections:
-        if "срок кредита" in title or title.startswith("срок"):
-            text = sections[title].get_text(" ", strip=True)
-            # Ищем все числа
-            nums = re.findall(r"(\d{1,3})", text)
-            months = [int(n) for n in nums]
-            if months:
-                term = max(months)
-            break
+    return rate, term
 
-    # fallback — если не нашли раздел, ищем "до N мес."
-    if term is None:
-        m = re.search(r"до\s*([0-9]{1,3})\s*(?:мес\.?|месяц[а-я]*)", soup.get_text(" ", strip=True), re.IGNORECASE)
-        term = int(m.group(1)) if m else 0
 
-    return {
-        "Ставка":    rate,
-        "Срок":      term,
-        "Обновлено": datetime.utcnow().isoformat() + "Z"
-    }
+def update_products_json(products, filepath):
+    """Записывает словарь products в JSON-файл по указанному пути."""
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(products, f, ensure_ascii=False, indent=2)
 
 
 def main():
-    if not os.path.isdir(HTML_DIR):
-        print(f"❌ Папка с HTML не найдена: {HTML_DIR}")
-        return
+    # Соответствие ключей и URL-ов
+    urls = {
+        "car_pledge_loan": "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
+        "prime_plus": "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
+        "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa"
+    }
 
-    updated = {}
-    for fn in sorted(os.listdir(HTML_DIR)):
-        if not fn.lower().endswith(".html"):
-            continue
-        key = os.path.splitext(fn)[0]
-        path = os.path.join(HTML_DIR, fn)
-        try:
-            updated[key] = parse_html_file(path)
-            print(f"✔ {key}: {updated[key]}")
-        except Exception as e:
-            print(f"❌ Ошибка в {fn}: {e}")
+    # Настройка драйвера
+    options = uc.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+    options.add_experimental_option('prefs', {
+        'profile.default_content_setting_values.images': 2
+    })
 
-    # Мержим с существующим products.json
-    current = {}
-    if os.path.exists(OUTPUT_PATH):
-        with open(OUTPUT_PATH, encoding="utf-8") as f:
-            current = json.load(f)
+    driver = uc.Chrome(options=options)
+    driver.set_window_size(1200, 800)
 
-    current.update(updated)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(current, f, ensure_ascii=False, indent=2)
+    products = {}
+    for key, url in urls.items():
+        rate, term = extract_rate_term(driver, url)
+        products[key] = {
+            'Ставка': rate,
+            'Срок': term,
+            'Обновлено': datetime.utcnow().isoformat() + 'Z'
+        }
 
-    print(f"✅ Обновлено {len(updated)} товаров в {OUTPUT_PATH}")
+    driver.quit()
+
+    # Сохраняем результаты в файл репозитория
+    update_products_json(products, 'data/products.json')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
