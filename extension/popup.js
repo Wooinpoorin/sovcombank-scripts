@@ -13,6 +13,7 @@
     const parts = fullName.split(/\s+/);
     const mccs = Array.from(document.querySelectorAll('#ops-table tr'))
       .map(tr => Number(tr.cells[4]?.textContent.trim()) || null);
+
     return {
       fullName,
       firstName: parts[1] || '',
@@ -44,9 +45,9 @@
   };
 
   const PRODUCT_TITLES = {
-    prime_plus:             'Кредит Прайм Плюс',
-    car_pledge_loan:        'Автокредит под залог авто',
-    real_estate_pledge_loan:'Кредит под залог недвижимости'
+    prime_plus:              'Кредит Прайм Плюс',
+    car_pledge_loan:         'Автокредит под залог авто',
+    real_estate_pledge_loan: 'Кредит под залог недвижимости'
   };
 
   function formatConditions(prod) {
@@ -58,7 +59,7 @@
   }
 
   function fillPlaceholders(text, vals) {
-    return text.replace(/{{(ФИО|Имя|Отчество|credit_remaining_months|ставка|срок)}}/g, (m, key) => {
+    return text.replace(/{{(ФИО|Имя|Отчество|credit_remaining_months|ставка|срок)}}/g, (_, key) => {
       switch (key) {
         case 'ФИО': return vals.fullName;
         case 'Имя': return vals.firstName;
@@ -67,24 +68,31 @@
         case 'ставка': return vals.rate;
         case 'срок': return vals.term;
       }
-      return m;
+      return _;
     });
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
     try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('Не удалось получить текущую вкладку.');
+
+      // Инъектим extractClient в страницу
       const [{ result: client }] = await chrome.scripting.executeScript({
-        target: { tabId: (await chrome.tabs.query({ active:true, currentWindow:true }))[0].id },
+        target: { tabId: tab.id },
         func: extractClient
       });
 
+      if (!client) throw new Error('Не найден блок клиента на странице.');
+
+      // Загружаем JSON-данные
       const [phrases, rules, products] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
         loadJSON('products.json')
       ]);
 
-      // Подготовка совпавших правил, сортировка по приоритету
+      // Фильтрация и сортировка по rules
       let matched = Object.values(rules)
         .map(rule => {
           const key = TARGET_PRODUCT_MAP[rule.target_product];
@@ -94,7 +102,7 @@
         .filter(({ rule }) => matchesRule(rule.trigger, client))
         .sort((a, b) => a.rule.priority - b.rule.priority);
 
-      // Если нет совпадений — дефолт
+      // Добавляем default, если ничего не подошло
       if (!matched.length && rules.default) {
         const def = rules.default;
         const key = TARGET_PRODUCT_MAP[def.target_product];
@@ -107,33 +115,29 @@
       const VARIANTS_PER_RULE = 3;
       let idx = 1;
 
-      // Генерируем для каждого правила несколько вариантов
       matched.forEach(({ rule, prodKey }) => {
         const prod = products[prodKey];
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
 
-        // значения для подстановок
         const vals = {
           fullName: client.fullName,
           firstName: client.firstName,
           patronymic: client.patronymic,
           credit_remaining_months: client.credit_remaining_months,
           rate: prod.Ставка != null ? `${prod.Ставка}%` : '—%',
-          term: prod.Срок   != null ? `${prod.Срок} мес.` : '— мес.'
+          term: prod.Срок != null ? `${prod.Срок} мес.` : '— мес.'
         };
 
         for (let v = 0; v < VARIANTS_PER_RULE; v++) {
-          // строим текст скрипта
           const lines = rule.phrase_blocks.map(block => {
             const key = block === 'intro' ? 'greeting' : block;
             return fillPlaceholders(pick(phrases[key] || []), vals);
-          }).filter(s => s);
+          }).filter(Boolean);
 
           let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
-          // рендерим карточку
           const card = document.createElement('div');
           card.className = 'script-card';
           card.innerHTML = `
@@ -143,6 +147,7 @@
           container.appendChild(card);
         }
       });
+
     } catch (e) {
       console.error(e);
       alert('Ошибка генерации скриптов: ' + e.message);
