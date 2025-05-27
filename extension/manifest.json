@@ -18,8 +18,8 @@
     "https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": "icons/icon48.png"
+    "default_popup": "popup.html"
+    
   },
   "background": {
     "service_worker": "background.js"
