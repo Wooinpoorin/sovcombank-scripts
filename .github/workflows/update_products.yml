@@ -19,21 +19,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Chrome & ChromeDriver
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
-          echo "CHROME_BIN=/usr/bin/chromium-browser" >> $GITHUB_ENV
-          echo "CHROMEDRIVER_PATH=/usr/bin/chromedriver" >> $GITHUB_ENV
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install selenium undetected-chromedriver beautifulsoup4
+        run: pip install requests beautifulsoup4
 
       - name: Run parser & update products.json
         run: python data/auto_update_products.py
