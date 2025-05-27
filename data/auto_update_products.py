@@ -1,88 +1,80 @@
 import requests
-import openai
+from bs4 import BeautifulSoup
 import json
+import re
+from datetime import datetime
 import time
 
-# ==== КОНФИГ ====
-OPENAI_API_KEY = "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"  # <-- ВСТАВЬ СВОЙ КЛЮЧ OpenAI API
+HF_TOKEN = "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"  # <-- вставь свой токен
+LLM_API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-llm-7b-chat"  # или другую бесплатную LLM
+
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 URLS = {
     "car_pledge_loan": "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
-    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa",
+    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa"
 }
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "text/html,application/xhtml+xml,application/xml",
-    "Referer": "https://sovcombank.ru/"
-}
+def ask_llm(prompt):
+    payload = {
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 256, "temperature": 0.1},
+        "options": {"wait_for_model": True}
+    }
+    response = requests.post(LLM_API_URL, headers=HEADERS, json=payload, timeout=60)
+    response.raise_for_status()
+    data = response.json()
+    # DeepSeek, Llama и другие возвращают [{'generated_text': "..."}]
+    if isinstance(data, list) and 'generated_text' in data[0]:
+        return data[0]['generated_text']
+    elif isinstance(data, dict) and "generated_text" in data:
+        return data["generated_text"]
+    else:
+        return str(data)
 
-# ==== AI ПАРСИНГ ====
-def ai_parse_conditions(html, product_name):
-    system_prompt = (
-        "Ты профессиональный банковский бот. "
-        "Тебе даётся HTML страницы продукта Совкомбанка. "
-        "Найди минимальную и максимальную процентные ставки по кредиту, "
-        "минимальный и максимальный срок кредита (в месяцах или годах), "
-        "выдавай только JSON: {\"min_rate\": <float>, \"max_rate\": <float>, "
-        "\"min_term\": <int>, \"max_term\": <int>}.\n"
-        "Если есть только одно значение — оно и min, и max.\n"
-        "Если не нашёл что-то, укажи null."
+def extract_conditions(text):
+    prompt = (
+        "Прочитай этот текст с сайта банка. "
+        "Извлеки минимальную процентную ставку (если есть диапазон — возьми минимальную), и максимальный срок кредитования в месяцах. "
+        "Верни результат строго в формате JSON: {'Ставка': число, 'Срок': число}.\n"
+        "Текст:\n" + text
     )
-    prompt = f"""
-Вот HTML для продукта '{product_name}' (https://sovcombank.ru). 
-Найди значения, как указано выше, и выдай только JSON!
-HTML:
-<<<
-{html[:35000]}  # GPT-4o видит большой контекст, но если что — можно сократить.
->>>
-"""
-    openai.api_key = OPENAI_API_KEY
-    response = openai.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.0,
-        max_tokens=500
-    )
-    # Достаём чистый JSON из ответа
-    text = response.choices[0].message.content
-    json_start = text.find('{')
-    json_end = text.rfind('}') + 1
-    try:
-        parsed = json.loads(text[json_start:json_end])
-    except Exception:
-        parsed = None
-    return parsed
+    answer = ask_llm(prompt)
+    # Ищем JSON в ответе
+    match = re.search(r"\{[^\}]+\}", answer)
+    if match:
+        try:
+            data = json.loads(match.group(0).replace("'", '"'))
+            return data.get('Ставка'), data.get('Срок')
+        except Exception:
+            pass
+    return None, 0
 
 def main():
-    results = {}
-    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-
-    for name, url in URLS.items():
-        print(f"Парсим {name} ({url}) ...")
+    products = {}
+    ts = datetime.utcnow().isoformat() + "Z"
+    for key, url in URLS.items():
+        print(f"Парсим {key} ({url}) ...")
+        resp = requests.get(url, timeout=30)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # Берём основной текст (можно расширить селектор)
+        main_text = soup.get_text(separator="\n", strip=True)
+        # Режем чтобы не было слишком длинно (лимиты)
+        main_text = main_text[:3000]
         try:
-            html = requests.get(url, headers=HEADERS, timeout=20).text
-            data = ai_parse_conditions(html, name)
+            rate, term = extract_conditions(main_text)
+            print(f"  Ставка: {rate}, Срок: {term}")
         except Exception as e:
-            print(f"❗ Ошибка при парсинге {name}: {e}")
-            data = None
-        # Формируем финальный словарь
-        results[name] = {
-            "Ставка мин": data["min_rate"] if data else None,
-            "Ставка макс": data["max_rate"] if data else None,
-            "Срок мин": data["min_term"] if data else None,
-            "Срок макс": data["max_term"] if data else None,
-            "Обновлено": now,
-        }
-        # OpenAI просит лимиты по токенам — если долго, делаем паузу между запросами
-        time.sleep(2)
+            print(f"❗ Ошибка при парсинге {key}: {e}")
+            rate, term = None, 0
+        products[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
+        time.sleep(6)  # не спамить API HuggingFace
 
-    # === СОХРАНЕНИЕ В JSON ===
     with open("data/products.json", "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        json.dump(products, f, ensure_ascii=False, indent=2)
     print("Выгружено в data/products.json")
 
 if __name__ == "__main__":
