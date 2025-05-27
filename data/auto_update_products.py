@@ -1,73 +1,56 @@
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import time
+# data/auto_update_products.py
+
+import requests
+from bs4 import BeautifulSoup
 import json
 import re
 from datetime import datetime
 
-
-def extract_rate_term(driver, url):
+def extract_rate_term(url):
     """
-    Загружает страницу, подгружает весь динамический контент,
-    берёт все <td data-type="value"> и из них парсит:
-     - минимальную процентную ставку
-     - максимальный срок в месяцах
+    Делает GET-запрос к url, парсит td[data-type="value"]:
+      - минимальная ставка (из всех %-значений)
+      - максимальный срок в месяцах (из всех «до N <unit>»)
     """
-    driver.get(url)
-    # ждём, пока появится тело страницы
-    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-
-    # скроллим вниз/вверх, чтобы подгрузились ленивые элементы
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(0.5)
-    driver.execute_script("window.scrollTo(0, 0);")
-    time.sleep(0.5)
-
-    # ждём, пока появятся элементы с data-type="value"
-    WebDriverWait(driver, 15).until(
-        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "td[data-type='value']"))
-    )
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, 'html.parser')
 
     rates = []
     terms = []
 
-    # берём текст всех ячеек
-    tds = driver.find_elements(By.CSS_SELECTOR, "td[data-type='value']")
-    for td in tds:
-        text = td.text.replace('\u00A0', ' ').strip()
-        if not text:
+    for td in soup.find_all('td', attrs={'data-type': 'value'}):
+        txt = td.get_text(strip=True).replace('\u00A0', ' ')
+        if not txt:
             continue
 
-        # 1) процентная ставка
-        if '%' in text:
-            for num in re.findall(r'[\d\.,]+', text):
+        # 1) проценты
+        if '%' in txt:
+            for num in re.findall(r'[\d\.,]+', txt):
                 try:
                     rates.append(float(num.replace(',', '.')))
                 except:
-                    continue
+                    pass
 
-        # 2) срок (берём последнюю цифру для максимума)
-        if 'до' in text:
-            nums = re.findall(r'(\d+)', text)
-            if nums:
-                n = int(nums[-1])
-                if 'год' in text or 'лет' in text:
-                    terms.append(n * 12)
-                elif 'мес' in text:
-                    terms.append(n)
-                elif 'дн' in text:
-                    terms.append(max(1, n // 30))
+        # 2) срок: «до N <unit>»
+        m = re.search(
+            r'до\s*(\d+)\s*(дн[ея]?|мес(?:\.|яц[ея]в?)?|лет|год[ау]?)',
+            txt, flags=re.IGNORECASE
+        )
+        if m:
+            n = int(m.group(1))
+            unit = m.group(2).lower()
+            if 'дн' in unit:
+                months = max(1, n // 30)
+            elif 'лет' in unit or 'год' in unit:
+                months = n * 12
+            else:
+                months = n
+            terms.append(months)
 
     rate = min(rates) if rates else None
     term = max(terms) if terms else 0
     return rate, term
-
-
-def update_products_json(products, filepath):
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(products, f, ensure_ascii=False, indent=2)
 
 
 def main():
@@ -77,29 +60,18 @@ def main():
         "real_estate_pledge_loan":"https://sovcombank.ru/credits/cash/alternativa"
     }
 
-    options = uc.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')
-    options.add_experimental_option('prefs', {
-        'profile.default_content_setting_values.images': 2
-    })
-
-    driver = uc.Chrome(options=options)
-    driver.set_window_size(1200, 800)
-
     products = {}
     for key, url in urls.items():
-        rate, term = extract_rate_term(driver, url)
+        rate, term = extract_rate_term(url)
         products[key] = {
-            'Ставка': rate,
-            'Срок': term,
-            'Обновлено': datetime.utcnow().isoformat() + 'Z'
+            "Ставка": rate,
+            "Срок": term,
+            "Обновлено": datetime.utcnow().isoformat() + "Z"
         }
 
-    driver.quit()
-    update_products_json(products, 'data/products.json')
+    with open("data/products.json", "w", encoding="utf-8") as f:
+        json.dump(products, f, ensure_ascii=False, indent=2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
