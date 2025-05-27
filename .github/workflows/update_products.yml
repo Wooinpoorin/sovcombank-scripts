@@ -1,4 +1,4 @@
-name: Обновление products.json
+name: Обновление products.json с ИИ
 
 on:
   schedule:
@@ -11,7 +11,6 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -19,25 +18,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+      - name: Install Python deps
+        run: |
+          pip install openai selenium beautifulsoup4
 
-      - name: Install deps
-        run: pip install selenium beautifulsoup4 webdriver-manager
+      - name: Install Chromium & chromedriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
 
-      - name: Run parser
+      - name: Run parser with OpenAI
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python data/auto_update_products.py
 
       - name: Commit & Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data/products.json
+          git add data/products.json || true
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "chore: auto-update products.json via Selenium CI"
+            git commit -m "chore: auto-update products.json via OpenAI"
             git push origin main
           fi
