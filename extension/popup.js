@@ -1,3 +1,7 @@
+// popup.js
+// Данные подгружаются из публичного репозитория:
+// https://github.com/Wooinpoorin/sovcombank-scripts/tree/main/data/
+
 (async () => {
   const BASE = 'https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/';
 
@@ -7,23 +11,58 @@
     return res.json();
   }
 
+  // Считываем данные из cl2.html — ФИО, имя, отчество, MCC, кредиты
   function extractClient() {
-    const fioEl = document.querySelector('#fio');
+    // ФИО
+    const fioEl = document.getElementById('fio');
     const fullName = fioEl ? fioEl.textContent.trim() : '';
     const parts = fullName.split(/\s+/);
-    const mccs = Array.from(document.querySelectorAll('#ops-table tr'))
-      .map(tr => Number(tr.cells[4]?.textContent.trim()) || null);
+    const firstName = parts[1] || '';
+    const patronymic = parts[2] || '';
+
+    // Категория клиента (напр. VIP если есть слово "VIP" в ФИО, можно заменить логику)
+    let category = '';
+    if (/VIP/i.test(fullName)) category = 'VIP';
+
+    // Месяцы до конца кредита (по минимальному сроку любого кредита)
+    let credit_remaining_months = 0;
+    const creditsTable = document.querySelector('#credits-table tbody');
+    if (creditsTable && creditsTable.rows.length) {
+      let minMonths = Infinity;
+      for (const row of creditsTable.rows) {
+        const closeDate = row.cells[5]?.textContent.trim();
+        if (closeDate) {
+          const [d, m, y] = closeDate.split('.');
+          const end = new Date(`${y}-${m}-${d}`);
+          const now = new Date();
+          let months = (end.getFullYear() - now.getFullYear()) * 12 + (end.getMonth() - now.getMonth());
+          if (months < minMonths) minMonths = months;
+        }
+      }
+      credit_remaining_months = minMonths !== Infinity ? minMonths : 0;
+    }
+
+    // Список операций (MCC-коды)
+    const opsTable = document.getElementById('ops-table');
+    const operations = [];
+    if (opsTable) {
+      for (const row of opsTable.rows) {
+        const mcc = Number(row.cells[4]?.textContent.trim());
+        if (mcc) operations.push(mcc);
+      }
+    }
 
     return {
       fullName,
-      firstName: parts[1] || '',
-      patronymic: parts[2] || '',
-      category: document.querySelector('.client-category')?.textContent.trim() || '',
-      credit_remaining_months: Number(document.querySelector('.credit-remaining')?.textContent.trim()) || 0,
-      operations: mccs
+      firstName,
+      patronymic,
+      category,
+      credit_remaining_months,
+      operations
     };
   }
 
+  // Проверка совпадения клиента с триггером правила
   function matchesRule(trigger, client) {
     if (Array.isArray(trigger.mcc_codes) && trigger.mcc_codes.length) {
       const count = client.operations.filter(mcc => trigger.mcc_codes.includes(mcc)).length;
@@ -80,6 +119,7 @@
     });
   }
 
+  // Случайный выбор из массива с исключением ранее использованных (для разнообразия)
   function pick(arr, used = []) {
     const filtered = arr.filter(e => !used.includes(e));
     if (filtered.length === 0) return arr[Math.floor(Math.random() * arr.length)] || '';
@@ -104,33 +144,45 @@
         loadJSON('products.json')
       ]);
 
-      let matched = Object.values(rules)
-        .map(rule => {
-          const key = TARGET_PRODUCT_MAP[rule.target_product];
-          return key && products[key] ? { rule, prodKey: key } : null;
-        })
-        .filter(Boolean)
-        .filter(({ rule }) => matchesRule(rule.trigger, client))
-        .sort((a, b) => a.rule.priority - b.rule.priority);
+      // Собираем правила по каждому продукту (не только по одному совпавшему!)
+      const allProductKeys = ['prime_plus', 'car_pledge_loan', 'real_estate_pledge_loan'];
 
-      if (!matched.length && rules.default) {
-        const def = rules.default;
-        const key = TARGET_PRODUCT_MAP[def.target_product];
-        if (key && products[key]) matched.push({ rule: def, prodKey: key });
+      // Для каждого продукта собираем подходящие правила
+      let offers = [];
+      for (const prodKey of allProductKeys) {
+        const prodRules = Object.values(rules)
+          .filter(rule => {
+            const mapKey = TARGET_PRODUCT_MAP[rule.target_product];
+            return mapKey === prodKey && matchesRule(rule.trigger, client);
+          })
+          .sort((a, b) => a.priority - b.priority);
+
+        // Если не нашлось по этому продукту, подставляем дефолтное правило если оно на него
+        if (!prodRules.length && rules.default) {
+          const mapKey = TARGET_PRODUCT_MAP[rules.default.target_product];
+          if (mapKey === prodKey) prodRules.push(rules.default);
+        }
+        // Добавляем
+        for (const rule of prodRules) {
+          offers.push({ rule, prodKey });
+        }
       }
 
+      // Если совсем ничего не нашлось (нет дефолта под продукты), добавим по одному дефолтному предложению на продукт
+      if (!offers.length && rules.default) {
+        for (const prodKey of allProductKeys) {
+          const mapKey = TARGET_PRODUCT_MAP[rules.default.target_product];
+          if (mapKey === prodKey) offers.push({ rule: rules.default, prodKey });
+        }
+      }
+
+      // Ограничим 1-2 шаблона на продукт для наглядности, но покажем по каждому продукту!
       const container = document.getElementById('scriptsContainer');
       container.innerHTML = '';
 
       let idx = 1;
-      let totalScripts = 0;
-      const MAX_SCRIPTS = 7;
 
-      const usedIntros = [], usedMain = [], usedFinal = [];
-
-      for (const { rule, prodKey } of matched) {
-        if (totalScripts >= MAX_SCRIPTS) break;
-
+      for (const { rule, prodKey } of offers) {
         const prod = products[prodKey];
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
@@ -146,24 +198,17 @@
           term: termStr
         };
 
-        const variants = rule.variants_per_rule || 2;
-
-        for (let v = 0; v < variants && totalScripts < MAX_SCRIPTS; v++) {
+        // Сгенерируем по 1-2 скрипта для каждого оффера для разнообразия
+        const usedBlocks = {};
+        for (let v = 0; v < 2; v++) {
           const lines = rule.phrase_blocks.map(block => {
             const key = block === 'intro' ? 'greeting' : block;
             const arr = phrases[key] || [];
-            if (key === 'greeting') return fillPlaceholders(pick(arr, usedIntros), vals);
-            if (key === 'main')      return fillPlaceholders(pick(arr, usedMain), vals);
-            if (key === 'final')     return fillPlaceholders(pick(arr, usedFinal), vals);
-            return fillPlaceholders(pick(arr), vals);
+            if (!usedBlocks[key]) usedBlocks[key] = [];
+            const phrase = fillPlaceholders(pick(arr, usedBlocks[key]), vals);
+            usedBlocks[key].push(phrase);
+            return phrase;
           }).filter(Boolean);
-
-          if (rule.phrase_blocks.includes('intro') && phrases.greeting)
-            usedIntros.push(lines[rule.phrase_blocks.indexOf('intro')]);
-          if (rule.phrase_blocks.includes('main') && phrases.main)
-            usedMain.push(lines[rule.phrase_blocks.indexOf('main')]);
-          if (rule.phrase_blocks.includes('final') && phrases.final)
-            usedFinal.push(lines[rule.phrase_blocks.indexOf('final')]);
 
           let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
@@ -175,9 +220,9 @@
             <p>${prelim} ${scriptText}</p>
           `;
           container.appendChild(card);
-          totalScripts++;
         }
       }
+
     } catch (e) {
       console.error(e);
       alert('Ошибка генерации скриптов: ' + e.message);
