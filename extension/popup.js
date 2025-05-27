@@ -77,7 +77,7 @@
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('Не удалось получить текущую вкладку.');
 
-      // Инъектим extractClient в страницу
+      // Инъектим extractClient
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: extractClient
@@ -92,7 +92,7 @@
         loadJSON('products.json')
       ]);
 
-      // Фильтрация и сортировка по rules
+      // Фильтрация и сортировка
       let matched = Object.values(rules)
         .map(rule => {
           const key = TARGET_PRODUCT_MAP[rule.target_product];
@@ -102,7 +102,7 @@
         .filter(({ rule }) => matchesRule(rule.trigger, client))
         .sort((a, b) => a.rule.priority - b.rule.priority);
 
-      // Добавляем default, если ничего не подошло
+      // Default
       if (!matched.length && rules.default) {
         const def = rules.default;
         const key = TARGET_PRODUCT_MAP[def.target_product];
@@ -138,6 +138,7 @@
           let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
+          // рендерим карточку без лишней запятой
           const card = document.createElement('div');
           card.className = 'script-card';
           card.innerHTML = `
