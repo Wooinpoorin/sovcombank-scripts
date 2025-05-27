@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+# data/auto_update_products.py
+
 import os
 import sys
 import json
 import re
 import time
+import traceback
 from datetime import datetime
 
 from selenium import webdriver
@@ -14,27 +17,24 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Три целевых страницы (со слэшем на конце по требованию сайта)
+# Точные ASCII-URL с завершающим слэшем
 PAGES = {
     "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
     "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-/",
     "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa/"
 }
 
-# Универсальный селектор для всех <td data-type="value">
 UNIVERSAL_TD = "td[data-type='value']"
 
 def create_driver():
-    # Опции для headless Chrome
     opts = Options()
     opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
-    prefs = {"profile.managed_default_content_settings.images": 2}
-    opts.add_experimental_option("prefs", prefs)
+    # не грузим картинки
+    opts.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
 
-    # Скачиваем подходящий chromedriver
     driver_path = ChromeDriverManager().install()
     service = Service(driver_path)
     return webdriver.Chrome(service=service, options=opts)
@@ -49,45 +49,42 @@ def extract_rate_term(driver, url):
     elems = driver.find_elements(By.CSS_SELECTOR, UNIVERSAL_TD)
     texts = [e.text.replace("\u00A0", " ").strip() for e in elems if e.text.strip()]
 
-    rates = []
-    terms = []
+    rates, terms = [], []
 
     for t in texts:
-        # Ставки: все числа перед %
+        # ставки
         if "%" in t:
             for num in re.findall(r"[\d\.,]+", t):
                 try:
                     rates.append(float(num.replace(",", ".")))
                 except:
                     pass
-        # Годы → месяцы
+        # годы → месяцы
         for y in re.findall(r"(\d+)\s*(лет|год[ау]?)", t, flags=re.IGNORECASE):
             terms.append(int(y[0]) * 12)
-        # Месяцы
+        # месяцы
         for m in re.findall(r"(\d+)\s*(мес(?:\.|яц[ея]в?)?)", t, flags=re.IGNORECASE):
             terms.append(int(m[0]))
-        # Дни → месяцы
+        # дни → месяцы
         for d in re.findall(r"(\d+)\s*дн[ея]?", t, flags=re.IGNORECASE):
             days = int(d[0])
             terms.append(max(1, days // 30))
 
-    return (
-        min(rates) if rates else None,
-        max(terms) if terms else 0
-    )
+    return (min(rates) if rates else None, max(terms) if terms else 0)
 
 def main():
     driver = create_driver()
     results = {}
-    now = datetime.utcnow().isoformat() + "Z"
+    ts = datetime.utcnow().isoformat() + "Z"
 
     for key, url in PAGES.items():
         try:
             rate, term = extract_rate_term(driver, url)
-        except Exception as e:
-            print(f"Error parsing {key}: {e}", file=sys.stderr)
+        except Exception:
+            print(f"\n❗ Ошибка при парсинге «{key}» ({url}):", file=sys.stderr)
+            traceback.print_exc()
             rate, term = None, 0
-        results[key] = {"Ставка": rate, "Срок": term, "Обновлено": now}
+        results[key] = {"Ставка": rate, "Срок": term, "Обновлено": ts}
 
     driver.quit()
 
@@ -96,7 +93,6 @@ def main():
         json.dump(results, f, ensure_ascii=False, indent=2)
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
-
 
 if __name__ == "__main__":
     main()
