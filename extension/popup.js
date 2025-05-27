@@ -48,20 +48,17 @@
 
   function formatConditions(prod) {
     const parts = [];
-    // Ставка: диапазон мин–макс
     const minRate = prod["Ставка мин"], maxRate = prod["Ставка макс"];
     const rateStr = (minRate != null && maxRate != null)
       ? (minRate === maxRate ? `${minRate}%` : `${minRate}%–${maxRate}%`)
       : '—%';
     parts.push(`ставка ${rateStr}`);
 
-    // Срок: диапазон мин–макс
     const minTerm = prod["Срок мин"], maxTerm = prod["Срок макс"];
     if (minTerm != null && maxTerm != null) {
       const termStr = (minTerm === maxTerm ? `${minTerm}` : `${minTerm}–${maxTerm}`);
       parts.push(`срок ${termStr} мес.`);
     }
-
     return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
@@ -79,11 +76,11 @@
     });
   }
 
-  // Функция для декартова произведения всех массивов вариантов фраз
-  function cartesian(arrays) {
-    if (!arrays.length) return [];
-    return arrays.reduce((acc, curr) =>
-      acc.flatMap(a => curr.map(b => a.concat([b]))), [[]]);
+  function pick(arr, used = []) {
+    // Выбирает случайную, но не из тех что уже были использованы
+    const filtered = arr.filter(e => !used.includes(e));
+    if (filtered.length === 0) return arr[Math.floor(Math.random() * arr.length)] || '';
+    return filtered[Math.floor(Math.random() * filtered.length)] || '';
   }
 
   document.getElementById('generate').addEventListener('click', async () => {
@@ -91,7 +88,6 @@
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('Не удалось получить текущую вкладку.');
 
-      // Инъектим extractClient
       const [{ result: client }] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: extractClient
@@ -99,14 +95,12 @@
 
       if (!client) throw new Error('Не найден блок клиента на странице.');
 
-      // Загружаем JSON-данные
       const [phrases, rules, products] = await Promise.all([
         loadJSON('phrases.json'),
         loadJSON('rules.json'),
         loadJSON('products.json')
       ]);
 
-      // Ищем совпадения
       let matched = Object.values(rules)
         .map(rule => {
           const key = TARGET_PRODUCT_MAP[rule.target_product];
@@ -116,7 +110,6 @@
         .filter(({ rule }) => matchesRule(rule.trigger, client))
         .sort((a, b) => a.rule.priority - b.rule.priority);
 
-      // Дефолт
       if (!matched.length && rules.default) {
         const def = rules.default;
         const key = TARGET_PRODUCT_MAP[def.target_product];
@@ -127,13 +120,19 @@
       container.innerHTML = '';
 
       let idx = 1;
+      let totalScripts = 0;
+      const MAX_SCRIPTS = 7;
 
-      matched.forEach(({ rule, prodKey }) => {
+      // Для разнообразия: трекер использованных фраз
+      const usedIntros = [], usedMain = [], usedFinal = [];
+
+      for (const { rule, prodKey } of matched) {
+        if (totalScripts >= MAX_SCRIPTS) break;
+
         const prod = products[prodKey];
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
 
-        // Подстановочные значения
         const minR = prod["Ставка мин"], maxR = prod["Ставка макс"];
         const rateVal = (minR != null && maxR != null)
           ? (minR === maxR ? `${minR}%` : `${minR}%–${maxR}%`)
@@ -153,17 +152,30 @@
           term: termVal
         };
 
-        // Массивы всех вариантов для каждого блока
-        const allPhraseVariants = rule.phrase_blocks.map(block => {
-          const key = block === 'intro' ? 'greeting' : block;
-          return (phrases[key] || []).map(phrase => fillPlaceholders(phrase, vals)).filter(Boolean);
-        });
+        // Сколько вариантов генерируем для этого правила
+        const variants = rule.variants_per_rule || 2;
 
-        // Декартово произведение (все комбинации)
-        const combos = cartesian(allPhraseVariants);
+        for (let v = 0; v < variants && totalScripts < MAX_SCRIPTS; v++) {
+          const lines = rule.phrase_blocks.map(block => {
+            const key = block === 'intro' ? 'greeting' : block;
+            const arr = phrases[key] || [];
+            // Для intro/main/final запоминаем использованные
+            if (key === 'greeting') return fillPlaceholders(pick(arr, usedIntros), vals);
+            if (key === 'main')      return fillPlaceholders(pick(arr, usedMain), vals);
+            if (key === 'final')     return fillPlaceholders(pick(arr, usedFinal), vals);
+            // Остальные — любые случайные
+            return fillPlaceholders(pick(arr), vals);
+          }).filter(Boolean);
 
-        combos.forEach(combo => {
-          let scriptText = combo.join(' ');
+          // Помним какие фразы уже были выбраны, чтобы не повторяться
+          if (rule.phrase_blocks.includes('intro') && phrases.greeting)
+            usedIntros.push(lines[rule.phrase_blocks.indexOf('intro')]);
+          if (rule.phrase_blocks.includes('main') && phrases.main)
+            usedMain.push(lines[rule.phrase_blocks.indexOf('main')]);
+          if (rule.phrase_blocks.includes('final') && phrases.final)
+            usedFinal.push(lines[rule.phrase_blocks.indexOf('final')]);
+
+          let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
           const card = document.createElement('div');
@@ -173,9 +185,9 @@
             <p>${prelim} ${scriptText}</p>
           `;
           container.appendChild(card);
-        });
-      });
-
+          totalScripts++;
+        }
+      }
     } catch (e) {
       console.error(e);
       alert('Ошибка генерации скриптов: ' + e.message);
