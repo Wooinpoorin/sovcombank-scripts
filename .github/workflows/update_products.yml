@@ -18,14 +18,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Chromium
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser
-
-      - name: Set CHROME_BIN
-        run: echo "CHROME_BIN=/usr/bin/chromium-browser" >> $GITHUB_ENV
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -33,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install beautifulsoup4 selenium undetected-chromedriver
+          pip install requests beautifulsoup4
 
       - name: Run parser & update products.json
         run: python data/auto_update_products.py
