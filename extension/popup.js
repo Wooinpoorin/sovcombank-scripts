@@ -46,19 +46,23 @@
     real_estate_pledge_loan: 'Кредит под залог недвижимости'
   };
 
-  function formatConditions(prod) {
-    const parts = [];
-    const minRate = prod["Ставка мин"], maxRate = prod["Ставка макс"];
-    const rateStr = (minRate != null && maxRate != null)
-      ? (minRate === maxRate ? `${minRate}%` : `${minRate}%–${maxRate}%`)
-      : '—%';
-    parts.push(`ставка ${rateStr}`);
-
-    const minTerm = prod["Срок мин"], maxTerm = prod["Срок макс"];
-    if (minTerm != null && maxTerm != null) {
-      const termStr = (minTerm === maxTerm ? `${minTerm}` : `${minTerm}–${maxTerm}`);
-      parts.push(`срок ${termStr} мес.`);
+  function getProductRateTerm(prod) {
+    let rateStr = '—%';
+    let termStr = '— мес.';
+    if ('Ставка (%)' in prod && prod['Ставка (%)'] != null) {
+      rateStr = prod['Ставка (%)'] + '%';
     }
+    if ('Срок (мес.)' in prod && prod['Срок (мес.)'] != null && prod['Срок (мес.)'] > 0) {
+      termStr = prod['Срок (мес.)'] + ' мес.';
+    }
+    return { rateStr, termStr };
+  }
+
+  function formatConditions(prod) {
+    const { rateStr, termStr } = getProductRateTerm(prod);
+    const parts = [];
+    parts.push(`ставка ${rateStr}`);
+    if (termStr !== '— мес.') parts.push(`срок ${termStr}`);
     return `Предварительные условия: ${parts.join(', ')}.`;
   }
 
@@ -77,7 +81,6 @@
   }
 
   function pick(arr, used = []) {
-    // Выбирает случайную, но не из тех что уже были использованы
     const filtered = arr.filter(e => !used.includes(e));
     if (filtered.length === 0) return arr[Math.floor(Math.random() * arr.length)] || '';
     return filtered[Math.floor(Math.random() * filtered.length)] || '';
@@ -123,7 +126,6 @@
       let totalScripts = 0;
       const MAX_SCRIPTS = 7;
 
-      // Для разнообразия: трекер использованных фраз
       const usedIntros = [], usedMain = [], usedFinal = [];
 
       for (const { rule, prodKey } of matched) {
@@ -133,41 +135,29 @@
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
 
-        const minR = prod["Ставка мин"], maxR = prod["Ставка макс"];
-        const rateVal = (minR != null && maxR != null)
-          ? (minR === maxR ? `${minR}%` : `${minR}%–${maxR}%`)
-          : '—%';
-
-        const minT = prod["Срок мин"], maxT = prod["Срок макс"];
-        const termVal = (minT != null && maxT != null)
-          ? (minT === maxT ? `${minT} мес.` : `${minT}–${maxT} мес.`)
-          : '— мес.';
+        const { rateStr, termStr } = getProductRateTerm(prod);
 
         const vals = {
           fullName: client.fullName,
           firstName: client.firstName,
           patronymic: client.patronymic,
           credit_remaining_months: client.credit_remaining_months,
-          rate: rateVal,
-          term: termVal
+          rate: rateStr,
+          term: termStr
         };
 
-        // Сколько вариантов генерируем для этого правила
         const variants = rule.variants_per_rule || 2;
 
         for (let v = 0; v < variants && totalScripts < MAX_SCRIPTS; v++) {
           const lines = rule.phrase_blocks.map(block => {
             const key = block === 'intro' ? 'greeting' : block;
             const arr = phrases[key] || [];
-            // Для intro/main/final запоминаем использованные
             if (key === 'greeting') return fillPlaceholders(pick(arr, usedIntros), vals);
             if (key === 'main')      return fillPlaceholders(pick(arr, usedMain), vals);
             if (key === 'final')     return fillPlaceholders(pick(arr, usedFinal), vals);
-            // Остальные — любые случайные
             return fillPlaceholders(pick(arr), vals);
           }).filter(Boolean);
 
-          // Помним какие фразы уже были выбраны, чтобы не повторяться
           if (rule.phrase_blocks.includes('intro') && phrases.greeting)
             usedIntros.push(lines[rule.phrase_blocks.indexOf('intro')]);
           if (rule.phrase_blocks.includes('main') && phrases.main)
