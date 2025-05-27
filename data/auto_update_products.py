@@ -15,15 +15,16 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# Три целевых страницы с обязательным слэшем на конце
+# три целевые страницы
 PAGES = {
     "prime_plus":              "https://sovcombank.ru/apply/credit/kredit-na-kartu/",
-    "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-/",
-    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa/"
+    "car_pledge_loan":         "https://sovcombank.ru/credits/cash/pod-zalog-avto-",
+    "real_estate_pledge_loan": "https://sovcombank.ru/credits/cash/alternativa"
 }
 
-# Универсальный селектор для всех трёх страниц
-UNIVERSAL_TD = "td[data-type='value']"
+# селекторы для таблиц
+SELECTOR_KREDIT = "td.Tariffs-module--tableDataDescr--KbfG1.Tariffs-module--seoRedesign--OwzVi"
+SELECTOR_COMMON = "td.max-w-xs.font-semibold.sm\\:max-w-none.lg\\:text-lg[data-type='value']"
 
 def create_driver():
     chrome_bin = "/usr/bin/chromium-browser"
@@ -34,45 +35,55 @@ def create_driver():
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--disable-gpu")
-    # не грузим картинки для скорости
     opts.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
-    svc = Service(driver_bin)
-    return webdriver.Chrome(service=svc, options=opts)
+    return webdriver.Chrome(service=Service(driver_bin), options=opts)
 
 def extract_rate_term(driver, url):
     driver.get(url)
+
     wait = WebDriverWait(driver, 15)
-    # ждём, что страница загрузится
     wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
     time.sleep(1)
 
-    # ждём появление нужных ячеек
-    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, UNIVERSAL_TD)))
+    # выбираем нужный селектор
+    if "kredit-na-kartu" in url:
+        sel = SELECTOR_KREDIT
+    else:
+        sel = SELECTOR_COMMON
 
-    elems = driver.find_elements(By.CSS_SELECTOR, UNIVERSAL_TD)
-    texts = [e.text.replace("\u00A0", " ").strip() for e in elems if e.text.strip()]
+    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, sel)))
+    # подгружаем ленивые элементы
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(0.5)
+    driver.execute_script("window.scrollTo(0, 0);")
+    time.sleep(0.5)
 
+    tds = driver.find_elements(By.CSS_SELECTOR, sel)
+    texts = [td.text.replace("\u00A0"," ").strip() for td in tds if td.text.strip()]
+
+    # ставка: минимальное число с '%'
     rates = []
-    terms = []
-
     for t in texts:
-        # 1) Ставки: все числа перед '%'
         if "%" in t:
             for num in re.findall(r"[\d\.,]+", t):
                 try:
                     rates.append(float(num.replace(",", ".")))
                 except:
                     pass
-        # 2) Сроки: годы → месяцы
-        for m in re.findall(r"(\d+)\s*(лет|год[ау]?)", t, flags=re.IGNORECASE):
-            terms.append(int(m[0]) * 12)
-        #    месяцы
-        for m in re.findall(r"(\d+)\s*(мес(?:\.|яц[ея]в?)?)", t, flags=re.IGNORECASE):
-            terms.append(int(m[0]))
-        #    дни → месяцы
-        for m in re.findall(r"(\d+)\s*дн[ея]?", t, flags=re.IGNORECASE):
-            days = int(m[0])
-            terms.append(max(1, days // 30))
+
+    # срок: максимальный из упоминаний диапазонов
+    terms = []
+    for t in texts:
+        # «от X до Y»
+        m = re.search(r"до\s*(\d+)", t)
+        if m:
+            n = int(m.group(1))
+            if "лет" in t or "год" in t:
+                terms.append(n * 12)
+            elif "дн" in t:
+                terms.append(max(1, n // 30))
+            else:
+                terms.append(n)
 
     return (
         min(rates) if rates else None,
