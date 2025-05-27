@@ -1,19 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Sovcombank Scripts Helper",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Подбирает индивидуальные скрипты для страницы Клиента Совкомбанка.",
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "48": "icons/icon48.png"
   },
   "permissions": [
+    "activeTab",
     "scripting",
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>",
+    "http://*/",
+    "https://*/",
     "file:///*",
     "https://raw.githubusercontent.com/Wooinpoorin/sovcombank-scripts/main/data/*"
   ],

@@ -104,7 +104,7 @@
         loadJSON('products.json')
       ]);
 
-      // Фильтрация и сортировка
+      // Ищем совпадения
       let matched = Object.values(rules)
         .map(rule => {
           const key = TARGET_PRODUCT_MAP[rule.target_product];
@@ -114,7 +114,7 @@
         .filter(({ rule }) => matchesRule(rule.trigger, client))
         .sort((a, b) => a.rule.priority - b.rule.priority);
 
-      // Default
+      // Дефолт
       if (!matched.length && rules.default) {
         const def = rules.default;
         const key = TARGET_PRODUCT_MAP[def.target_product];
@@ -132,15 +132,15 @@
         const title = PRODUCT_TITLES[prodKey] || prodKey;
         const prelim = formatConditions(prod);
 
-        // Подготовка значений для заполнения шаблонов
-        const minRate2 = prod["Ставка мин"], maxRate2 = prod["Ставка макс"];
-        const rateVal = (minRate2 != null && maxRate2 != null)
-          ? (minRate2 === maxRate2 ? `${minRate2}%` : `${minRate2}%–${maxRate2}%`)
+        // Подстановочные значения
+        const minR = prod["Ставка мин"], maxR = prod["Ставка макс"];
+        const rateVal = (minR != null && maxR != null)
+          ? (minR === maxR ? `${minR}%` : `${minR}%–${maxR}%`)
           : '—%';
 
-        const minTerm2 = prod["Срок мин"], maxTerm2 = prod["Срок макс"];
-        const termVal = (minTerm2 != null && maxTerm2 != null)
-          ? (minTerm2 === maxTerm2 ? `${minTerm2} мес.` : `${minTerm2}–${maxTerm2} мес.`)
+        const minT = prod["Срок мин"], maxT = prod["Срок макс"];
+        const termVal = (minT != null && maxT != null)
+          ? (minT === maxT ? `${minT} мес.` : `${minT}–${maxT} мес.`)
           : '— мес.';
 
         const vals = {
@@ -161,7 +161,6 @@
           let scriptText = lines.join(' ');
           if (scriptText) scriptText = scriptText[0].toUpperCase() + scriptText.slice(1);
 
-          // Рендерим карточку
           const card = document.createElement('div');
           card.className = 'script-card';
           card.innerHTML = `
