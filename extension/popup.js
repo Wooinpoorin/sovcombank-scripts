@@ -81,8 +81,8 @@
 
   // Привязки для отображения
   const TARGET_PRODUCT_MAP = {
-    premium_loan:            'prime_plus',
-    car_loan:                'car_pledge_loan',
+    prime_plus:            'prime_plus',
+    car_pledge_loan:                'car_pledge_loan',
     real_estate_pledge_loan: 'real_estate_pledge_loan'
   };
 
