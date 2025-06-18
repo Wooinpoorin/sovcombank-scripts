@@ -14,8 +14,9 @@
   "home_improvement": {
     "priority": 20,
     "trigger": { "mcc_codes": [5211], "min_count": 1 },
-    "phrase_blocks": ["greeting", "interest_home", "real_estate", "closing"],
-    "target_product": "real_estate_pledge_loan"
+    "phrase_blocks": ["greeting", "interest_home", "generic_offer", "closing"],
+    "target_product": "prime_plus"
+ 
   },
   "electronics_shopping": {
     "priority": 30,
